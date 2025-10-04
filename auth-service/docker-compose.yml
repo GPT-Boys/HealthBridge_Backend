@@ -35,6 +35,8 @@ services:
     depends_on:
       - mongodb
     volumes:
+      - .:/app
+      - /app/node_modules
       - ./logs:/app/logs
     networks:
       - healthbridge-network

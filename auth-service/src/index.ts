@@ -83,10 +83,17 @@ if (NODE_ENV === "development") {
 
 // Request logging
 app.use((req: Request, res: Response, next: NextFunction) => {
-  logger.info(`${req.method} ${req.path} ${res}`, {
-    ip: req.ip,
-    userAgent: req.headers["user-agent"],
+  const start = Date.now();
+
+  res.on("finish", () => {
+    const duration = Date.now() - start;
+    logger.info(`${req.method} ${req.originalUrl} -> ${res.statusCode}`, {
+      ip: req.ip,
+      userAgent: req.headers["user-agent"],
+      duration: `${duration}ms`,
+    });
   });
+
   next();
 });
 
