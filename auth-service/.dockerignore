@@ -1,0 +1,19 @@
+# =====================================================
+# auth-service/.dockerignore
+# =====================================================
+
+node_modules
+npm-debug.log
+dist
+.env
+.env.local
+logs
+*.log
+.git
+.gitignore
+README.md
+.vscode
+.idea
+*.swp
+coverage
+.nyc_output
