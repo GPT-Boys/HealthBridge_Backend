@@ -29,7 +29,7 @@ export interface LoginData {
 
 export class AuthService {
   async register(
-    data: RegisterData
+    data: RegisterData,
   ): Promise<{ user: IUser; accessToken: string; refreshToken: string }> {
     try {
       // Verificar si el usuario ya existe
@@ -79,7 +79,7 @@ export class AuthService {
 
   async login(
     data: LoginData,
-    userAgent?: string
+    userAgent?: string,
   ): Promise<{ user: IUser; accessToken: string; refreshToken: string }> {
     try {
       // Buscar usuario e incluir password
@@ -95,10 +95,10 @@ export class AuthService {
       // Verificar si la cuenta está bloqueada
       if (user.isLocked()) {
         const lockTimeRemaining = Math.ceil(
-          (user.security.lockUntil!.getTime() - Date.now()) / 60000
+          (user.security.lockUntil!.getTime() - Date.now()) / 60000,
         );
         throw new Error(
-          `Cuenta bloqueada. Intenta nuevamente en ${lockTimeRemaining} minutos`
+          `Cuenta bloqueada. Intenta nuevamente en ${lockTimeRemaining} minutos`,
         );
       }
 
@@ -124,7 +124,7 @@ export class AuthService {
 
       // Limpiar tokens expirados
       user.refreshTokens = user.refreshTokens.filter(
-        (rt) => rt.expires > new Date()
+        (rt) => rt.expires > new Date(),
       );
 
       // Agregar nuevo refresh token
@@ -149,7 +149,7 @@ export class AuthService {
   }
 
   async refreshAccessToken(
-    refreshToken: string
+    refreshToken: string,
   ): Promise<{ accessToken: string; refreshToken: string }> {
     try {
       // Verificar refresh token
@@ -163,7 +163,7 @@ export class AuthService {
 
       // Verificar que el refresh token existe y no ha expirado
       const tokenExists = user.refreshTokens.find(
-        (rt) => rt.token === refreshToken && rt.expires > new Date()
+        (rt) => rt.token === refreshToken && rt.expires > new Date(),
       );
 
       if (!tokenExists) {
@@ -176,7 +176,7 @@ export class AuthService {
 
       // Reemplazar el refresh token viejo con el nuevo
       user.refreshTokens = user.refreshTokens.filter(
-        (rt) => rt.token !== refreshToken
+        (rt) => rt.token !== refreshToken,
       );
 
       const refreshTokenExpires = new Date();
@@ -224,7 +224,7 @@ export class AuthService {
 
       // Remover el refresh token específico
       user.refreshTokens = user.refreshTokens.filter(
-        (rt) => rt.token !== refreshToken
+        (rt) => rt.token !== refreshToken,
       );
       await user.save();
 
@@ -247,7 +247,7 @@ export class AuthService {
       await user.save();
 
       logger.info(
-        `Usuario deslogueado de todos los dispositivos: ${user.email}`
+        `Usuario deslogueado de todos los dispositivos: ${user.email}`,
       );
     } catch (error: any) {
       logger.error("Error en logout all:", error);

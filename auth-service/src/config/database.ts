@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import { logger } from "../utils/logger.js";
+import ENV from "./env.js";
 
 interface DatabaseConfig {
   uri: string;
@@ -7,7 +8,7 @@ interface DatabaseConfig {
 }
 
 const config: DatabaseConfig = {
-  uri: process.env.MONGODB_URI || "mongodb://localhost:27017/healthbridge-auth",
+  uri: ENV.MONGODB_URI,
   options: {
     maxPoolSize: 10,
     minPoolSize: 2,

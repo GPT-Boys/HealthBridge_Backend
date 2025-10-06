@@ -8,21 +8,16 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import compression from "compression";
-import dotenv from "dotenv";
 import { connectDatabase } from "./config/database.js";
 import authRoutes from "./routes/auth.routes.js";
 import { logger } from "./utils/logger.js";
-
-// Cargar variables de entorno
-dotenv.config();
+import ENV from "./config/env.js";
 
 // Crear aplicación Express
 const app: Application = express();
-const PORT = process.env.PORT || 3001;
-const NODE_ENV = process.env.NODE_ENV || "development";
 
 // Configuración de CORS
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || [
+const allowedOrigins = ENV.ALLOWED_ORIGINS?.split(",") || [
   "http://localhost:5173",
   "http://localhost:3000",
 ];
@@ -30,7 +25,7 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(",") || [
 const corsOptions = {
   origin: (
     origin: string | undefined,
-    callback: (err: Error | null, allow?: boolean) => void
+    callback: (err: Error | null, allow?: boolean) => void,
   ) => {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -58,7 +53,7 @@ app.use(
       includeSubDomains: true,
       preload: true,
     },
-  })
+  }),
 );
 
 app.use(cors(corsOptions));
@@ -69,7 +64,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Logging
-if (NODE_ENV === "development") {
+if (ENV.NODE_ENV === "development" || ENV.NODE_ENV === "test") {
   app.use(morgan("dev"));
 } else {
   app.use(
@@ -77,7 +72,7 @@ if (NODE_ENV === "development") {
       stream: {
         write: (message: string) => logger.info(message.trim()),
       },
-    })
+    }),
   );
 }
 
@@ -106,9 +101,11 @@ app.get("/", (req: Request, res: Response) => {
     service: "HealthBridge Auth Service",
     version: "1.0.0",
     status: "running",
-    environment: NODE_ENV,
+    environment: ENV.NODE_ENV,
     path: req.path,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toLocaleString("en-US", {
+      timeZone: "America/New_York",
+    }),
   });
 });
 
@@ -117,9 +114,11 @@ app.get("/health", async (req: Request, res: Response) => {
   const healthCheck = {
     service: "auth-service",
     status: "OK",
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toLocaleString("en-US", {
+      timeZone: "America/New_York",
+    }),
     uptime: process.uptime(),
-    environment: NODE_ENV,
+    environment: ENV.NODE_ENV,
     path: req.path,
     database: {
       status: "connected",
@@ -159,8 +158,12 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
   res.status(500).json({
     error:
-      NODE_ENV === "production" ? "Error interno del servidor" : err.message,
-    ...(NODE_ENV === "development" && { stack: err.stack }),
+      ENV.NODE_ENV === "production"
+        ? "Error interno del servidor"
+        : err.message,
+    ...((ENV.NODE_ENV === "development" || ENV.NODE_ENV === "test") && {
+      stack: err.stack,
+    }),
   });
 });
 
@@ -171,25 +174,29 @@ const startServer = async () => {
     await connectDatabase();
 
     // Iniciar servidor
-    app.listen(PORT, () => {
+    app.listen(ENV.PORT, () => {
+      logger.info(
+        `🚀 Servidor corriendo en puerto ${ENV.PORT} (${ENV.NODE_ENV})`,
+      );
+
       logger.info(`
 ╔═══════════════════════════════════════════════════════╗
 ║                                                       ║
 ║   🔐 HealthBridge Auth Service                        ║
 ║                                                       ║
 ║   Status:      ✅ Running                             ║
-║   Environment: ${NODE_ENV.padEnd(12)}                   ║
-║   Port:        ${PORT}                                    ║
-║   URL:         http://localhost:${PORT}                  ║
-║   Health:      http://localhost:${PORT}/health           ║
-║   API Docs:    http://localhost:${PORT}/api/auth         ║
+║   Environment: ${ENV.NODE_ENV.padEnd(12)}                   ║
+║   Port:        ${ENV.PORT}                                    ║
+║   URL:         http://localhost:${ENV.PORT}                  ║
+║   Health:      http://localhost:${ENV.PORT}/health           ║
+║   API Docs:    http://localhost:${ENV.PORT}/api/auth         ║
 ║                                                       ║
-║   Time:        ${new Date().toLocaleString()}        ║
+║   Time:        ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })}        ║
 ║                                                       ║
 ╚═══════════════════════════════════════════════════════╝
       `);
 
-      if (NODE_ENV === "development") {
+      if (ENV.NODE_ENV === "development" || ENV.NODE_ENV === "test") {
         logger.info("📋 Rutas disponibles:");
         logger.info("   POST   /api/auth/register");
         logger.info("   POST   /api/auth/login");

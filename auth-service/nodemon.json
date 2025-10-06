@@ -2,8 +2,6 @@
   "watch": ["src"],
   "ext": "ts",
   "ignore": ["src/**/*.test.ts"],
-  "exec": "ts-node ./src/index.ts",
-  "env": {
-    "NODE_ENV": "development"
-  }
+  "exec": "npx tsx ./src/index.ts",
+  "env": { "$or": [{ "NODE_ENV": "development" }, { "NODE_ENV": "test" }] }
 }

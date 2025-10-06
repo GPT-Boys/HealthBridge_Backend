@@ -1,11 +1,6 @@
 import jwt from "jsonwebtoken";
 import { type IUser } from "../models/User.js";
-
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
-const JWT_REFRESH_SECRET =
-  process.env.JWT_REFRESH_SECRET || "your-refresh-secret";
-const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || "30d";
+import ENV from "../config/env.js";
 
 export interface TokenPayload {
   userId: string;
@@ -21,8 +16,8 @@ export const generateAccessToken = (user: IUser): string => {
     role: user.role,
   };
 
-  return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: JWT_EXPIRES_IN as any,
+  return jwt.sign(payload, ENV.JWT_SECRET, {
+    expiresIn: ENV.JWT_EXPIRES_IN as any,
     issuer: "healthbridge-auth",
     audience: "healthbridge-app",
   });
@@ -35,8 +30,8 @@ export const generateRefreshToken = (user: IUser): string => {
     role: user.role,
   };
 
-  return jwt.sign(payload, JWT_REFRESH_SECRET, {
-    expiresIn: JWT_REFRESH_EXPIRES_IN as any,
+  return jwt.sign(payload, ENV.JWT_REFRESH_SECRET, {
+    expiresIn: ENV.JWT_REFRESH_EXPIRES_IN as any,
     issuer: "healthbridge-auth",
     audience: "healthbridge-app",
   });
@@ -44,23 +39,25 @@ export const generateRefreshToken = (user: IUser): string => {
 
 export const verifyAccessToken = (token: string): TokenPayload => {
   try {
-    return jwt.verify(token, JWT_SECRET, {
+    return jwt.verify(token, ENV.JWT_SECRET, {
       issuer: "healthbridge-auth",
       audience: "healthbridge-app",
     }) as TokenPayload;
   } catch (error) {
-    throw new Error("Token inválido o expirado");
+    throw new Error(`Token inválido o expirado: ${(error as Error).message}`);
   }
 };
 
 export const verifyRefreshToken = (token: string): TokenPayload => {
   try {
-    return jwt.verify(token, JWT_REFRESH_SECRET, {
+    return jwt.verify(token, ENV.JWT_REFRESH_SECRET, {
       issuer: "healthbridge-auth",
       audience: "healthbridge-app",
     }) as TokenPayload;
   } catch (error) {
-    throw new Error("Refresh token inválido o expirado");
+    throw new Error(
+      `Refresh token inválido o expirado: ${(error as Error).message}`,
+    );
   }
 };
 

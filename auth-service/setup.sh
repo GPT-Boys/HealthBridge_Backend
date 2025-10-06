@@ -47,16 +47,16 @@ mkdir -p src/{config,controllers,middleware,models,routes,services,utils}
 echo -e "${BLUE}Instalando dependencias...${NC}"
 npm install
 
-# Crear archivo .env si no existe
-if [ ! -f .env ]; then
-    echo -e "${BLUE}Creando archivo .env...${NC}"
-    cat > .env << 'EOF'
+# Crear archivo .env.development si no existe
+if [ ! -f .env.development ]; then
+    echo -e "${BLUE}Creando archivo .env.development...${NC}"
+    cat > .env.development << 'EOF'
 # Server Configuration
 PORT=3001
 NODE_ENV=development
 
 # Database Configuration
-MONGODB_URI=mongodb+srv://osquimenacho2002_db_user:LLLWy0c83sos1xN0@healthbridge.pykxi5g.mongodb.net/?retryWrites=true&w=majority&appName=HealthBridge
+MONGODB_URI=mongodb://localhost:27017/healthbridge-auth
 
 # JWT Configuration
 JWT_SECRET=healthbridge-super-secret-jwt-key-change-in-production-2024
@@ -90,9 +90,9 @@ EMAIL_PASSWORD=your-app-password
 USER_SERVICE_URL=http://localhost:3002
 SUBSCRIPTION_SERVICE_URL=http://localhost:3007
 EOF
-    echo -e "${GREEN}✅ Archivo .env creado${NC}"
+    echo -e "${GREEN}✅ Archivo .env.development creado${NC}"
 else
-    echo -e "${YELLOW}⚠️  Archivo .env ya existe${NC}"
+    echo -e "${YELLOW}⚠️  Archivo .env.development ya existe${NC}"
 fi
 
 # Crear .gitignore
@@ -106,6 +106,7 @@ yarn-error.log*
 
 # Environment
 .env
+.env.*
 .env.local
 .env.*.local
 
@@ -139,7 +140,7 @@ EOF
 echo -e "${GREEN}✅ Configuración completada${NC}"
 echo ""
 echo -e "${BLUE}📋 Próximos pasos:${NC}"
-echo "1. Edita el archivo .env con tus configuraciones"
+echo "1. Edita el archivo .env.development con tus configuraciones"
 echo "2. Asegúrate de que MongoDB esté corriendo"
 echo "3. Ejecuta: npm run dev"
 echo ""

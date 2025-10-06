@@ -1,15 +1,15 @@
 # =====================================================
-# auth-service/docker-compose.yml
-# Entorno de desarrollo (hot reload)
+# auth-service/docker-compose.prod.yml
+# Entorno de producción (imagen limpia y compilada)
 # =====================================================
 
 version: "3.8"
 
-name: HB_auth-service_dev
+name: HB_auth-service_prod
 services:
   mongodb:
     image: mongo:7.0
-    container_name: HB_auth-service_mongodb_dev
+    container_name: HB_auth-service_mongodb_prod
     restart: always
     ports:
       - "27017:27017"
@@ -24,25 +24,21 @@ services:
   auth-service:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     env_file:
-      - .env.development
-    container_name: HB_auth-service_dev
+      - .env.production
+    container_name: HB_auth-service_prod
     restart: always
     ports:
       - "3001:3001"
     environment:
       PORT: 3001
-      NODE_ENV: development
-      MONGODB_URI: mongodb+srv://osquimenacho2002_db_user:LLLWy0c83sos1xN0@healthbridge.pykxi5g.mongodb.net/HB_auth-service_dev_DB?retryWrites=true&w=majority&appName=HealthBridge
-      JWT_SECRET: healthbridge-jwt-secret-dev
-      JWT_REFRESH_SECRET: healthbridge-refresh-secret-dev
+      NODE_ENV: production
+      MONGODB_URI: mongodb+srv://osquimenacho2002_db_user:LLLWy0c83sos1xN0@healthbridge.pykxi5g.mongodb.net/HB_auth-service_prod_DB?retryWrites=true&w=majority&appName=HealthBridge
+      JWT_SECRET: healthbridge-jwt-secret-prod
+      JWT_REFRESH_SECRET: healthbridge-refresh-secret-prod
     depends_on:
       - mongodb
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - ./logs:/app/logs
     networks:
       - healthbridge-network
 

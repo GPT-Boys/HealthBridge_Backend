@@ -32,27 +32,27 @@ router.post(
   "/register",
   generalLimiter,
   validateRegister,
-  (req: any, res: any) => authController.register(req, res)
+  (req: any, res: any) => authController.register(req, res),
 );
 router.post("/login", authLimiter, validateLogin, (req: any, res: any) =>
-  authController.login(req, res)
+  authController.login(req, res),
 );
 router.post("/refresh-token", generalLimiter, (req, res) =>
-  authController.refreshToken(req, res)
+  authController.refreshToken(req, res),
 );
 router.post("/verify-token", generalLimiter, (req, res) =>
-  authController.verifyToken(req, res)
+  authController.verifyToken(req, res),
 );
 
 // Protected routes
 router.post("/logout", authenticate, (req, res) =>
-  authController.logout(req, res)
+  authController.logout(req, res),
 );
 router.post("/logout-all", authenticate, (req, res) =>
-  authController.logoutAll(req, res)
+  authController.logoutAll(req, res),
 );
 router.get("/profile", authenticate, (req, res) =>
-  authController.getProfile(req, res)
+  authController.getProfile(req, res),
 );
 
 // Health check
@@ -61,7 +61,9 @@ router.get("/health", (req, res) => {
     service: "auth-service",
     status: "OK",
     path: req.path,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toLocaleString("en-US", {
+      timeZone: "America/New_York",
+    }),
   });
 });
 

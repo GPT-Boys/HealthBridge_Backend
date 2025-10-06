@@ -1,5 +1,6 @@
 import mongoose, { Document, Schema } from "mongoose";
 import bcrypt from "bcryptjs";
+import ENV from "../config/env.js";
 
 export interface IUser extends Document {
   email: string;
@@ -151,7 +152,7 @@ const userSchema = new Schema<IUser>(
         return ret;
       },
     },
-  }
+  },
 );
 
 // Indexes
@@ -167,7 +168,7 @@ userSchema.pre("save", async function (next) {
   }
 
   try {
-    const rounds = parseInt(process.env.BCRYPT_ROUNDS || "12");
+    const rounds = ENV.BCRYPT_ROUNDS;
     const salt = await bcrypt.genSalt(rounds);
     this.password = await bcrypt.hash(this.password, salt);
     this.security.lastPasswordChange = new Date();
@@ -179,7 +180,7 @@ userSchema.pre("save", async function (next) {
 
 // Método para comparar passwords
 userSchema.methods.comparePassword = async function (
-  candidatePassword: string
+  candidatePassword: string,
 ): Promise<boolean> {
   try {
     return await bcrypt.compare(candidatePassword, this.password);
@@ -199,7 +200,7 @@ userSchema.methods.incrementLoginAttempts = async function (): Promise<void> {
   }
 
   const updates: any = { $inc: { "security.loginAttempts": 1 } };
-  const maxAttempts = parseInt(process.env.MAX_LOGIN_ATTEMPTS || "5");
+  const maxAttempts = ENV.MAX_LOGIN_ATTEMPTS;
 
   // Bloquear cuenta si se alcanza el máximo de intentos
   if (this.security.loginAttempts + 1 >= maxAttempts && !this.isLocked()) {

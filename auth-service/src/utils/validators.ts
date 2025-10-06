@@ -4,7 +4,7 @@ export const validateEmail = (email: string): boolean => {
 };
 
 export const validatePassword = (
-  password: string
+  password: string,
 ): {
   isValid: boolean;
   errors: string[];

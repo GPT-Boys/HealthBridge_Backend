@@ -25,15 +25,15 @@ cd auth-service
 npm install
 
 # Copiar variables de entorno
-cp .env.example .env
+cp .env.example .env.development
 
-# Editar .env con tus configuraciones
-nano .env
+# Editar .env.development con tus configuraciones
+nano .env.development
 ```
 
 ## ⚙️ Configuración
 
-Edita el archivo `.env` con tus valores:
+Edita el archivo `.env.development` con tus valores:
 
 ```env
 PORT=3001
@@ -130,7 +130,7 @@ auth-service/
 │   ├── utils/           # Utilidades
 │   └── index.ts         # Punto de entrada
 ├── logs/                # Archivos de log
-├── .env                 # Variables de entorno
+├── .env.development     # Variables de entorno
 └── package.json
 ```
 

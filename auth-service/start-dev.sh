@@ -14,9 +14,9 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Verificar que existe .env
-if [ ! -f .env ]; then
-    echo -e "${RED}❌ Archivo .env no encontrado${NC}"
+# Verificar que existe .env.development
+if [ ! -f .env.development ]; then
+    echo -e "${RED}❌ Archivo .env.development no encontrado${NC}"
     echo "Ejecuta: ./setup.sh"
     exit 1
 fi

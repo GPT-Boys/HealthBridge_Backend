@@ -57,8 +57,8 @@ echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     test_endpoint "POST" "/api/auth/register" '{
         "email": "test.doctor@healthbridge.bo",
-        "password": "Test123!@#",
-        "firstName": "Dr. Test",
+        "password": "Test123!@#05qu1",
+        "firstName": "Dr Test",
         "lastName": "Usuario",
         "role": "doctor",
         "profile": {
@@ -85,7 +85,7 @@ echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     test_endpoint "POST" "/api/auth/login" '{
         "email": "test.doctor@healthbridge.bo",
-        "password": "Test123!@#"
+        "password": "Test123!@#05qu1"
     }' "Login de usuario"
     
     # Guardar tokens del login
