@@ -1,0 +1,87 @@
+version: "3.9"
+
+services:
+  # 🧱 MongoDB (compartido)
+  mongodb:
+    image: mongo:7.0
+    container_name: healthbridge_mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - healthbridge-network
+
+  # 🔐 Auth Service
+  auth-service:
+    build: ./auth-service
+    container_name: auth-service
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./auth-service/.env.development
+    depends_on:
+      - mongodb
+    networks:
+      - healthbridge-network
+
+  # 👤 User Service
+  user-service:
+    build: ./user-service
+    container_name: user-service
+    ports:
+      - "3002:3002"
+    env_file:
+      - ./user-service/.env.development
+    depends_on:
+      - mongodb
+    networks:
+      - healthbridge-network
+
+  # 📅 Appointment Service
+  appointment-service:
+    build: ./appointment-service
+    container_name: appointment-service
+    ports:
+      - "3003:3003"
+    env_file:
+      - ./appointment-service/.env.development
+    depends_on:
+      - mongodb
+    networks:
+      - healthbridge-network
+
+  # 💳 Billing Service
+  billing-service:
+    build: ./billing-service
+    container_name: billing-service
+    ports:
+      - "3004:3004"
+    env_file:
+      - ./billing-service/.env.development
+    depends_on:
+      - mongodb
+    networks:
+      - healthbridge-network
+
+  # 🌐 API Gateway
+  gateway:
+    build: ./gateway
+    container_name: gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-service
+      - user-service
+      - appointment-service
+      - billing-service
+    networks:
+      - healthbridge-network
+
+networks:
+  healthbridge-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:

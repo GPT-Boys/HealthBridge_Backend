@@ -1,17 +1,17 @@
 import express from "express";
-import dotenv from "dotenv";
 import cors from "cors";
-import { connectDB } from "./config/db";
-import userRoutes from "./routes/user.routes";
-
-dotenv.config();
-connectDB();
+import { connectDB } from "./config/db";      // ✅
+import { ENV } from "./config/env";           // ✅
+import userRoutes from "./routes/user.routes"; // ✅
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
+connectDB();
+
 app.use("/users", userRoutes);
 
-const PORT = process.env.PORT || 3002;
-app.listen(PORT, () => console.log(`🚀 User Service running on port ${PORT}`));
+app.listen(ENV.PORT, () => {
+  console.log(`🚀 User Service running on port ${ENV.PORT}`);
+});

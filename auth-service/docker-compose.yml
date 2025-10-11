@@ -46,19 +46,6 @@ services:
     networks:
       - healthbridge-network
 
-    user-service:
-    build: ./user-service
-    ports:
-      - "3002:3002"
-    environment:
-      PORT: 3002
-      NODE_ENV: development
-      MONGODB_URI: mongodb+srv://<tu_conexion_mongo>
-    depends_on:
-      - mongodb
-    networks:
-      - healthbridge-network
-
 
 volumes:
   mongodb_data:

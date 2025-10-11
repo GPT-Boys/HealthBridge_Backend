@@ -1,0 +1,12 @@
+user-service:
+  build: ./user-service
+  ports:
+    - "3002:3002"
+  environment:
+    PORT: 3002
+    NODE_ENV: development
+    MONGODB_URI: mongodb+srv://osquimenacho2002_db_user:LLLWy0c83sos1xN0@healthbridge.pykxi5g.mongodb.net/HB_user_service_dev_DB?retryWrites=true&w=majority&appName=HealthBridge
+    JWT_SECRET: healthbridge-jwt-secret-dev
+    JWT_REFRESH_SECRET: healthbridge-refresh-secret-dev
+  networks:
+    - healthbridge-network
