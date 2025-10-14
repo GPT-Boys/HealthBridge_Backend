@@ -8,7 +8,7 @@ const mongooseOptions = {
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
   bufferCommands: false,
-  bufferMaxEntries: 0,
+  //bufferMaxEntries: 0,
 };
 
 export const connectDatabase = async (): Promise<void> => {
