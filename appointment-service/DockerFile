@@ -1,0 +1,18 @@
+# ===============================
+# HealthBridge Appointment Service
+# ===============================
+
+# 1️⃣ Etapa base
+FROM node:20-alpine AS base
+WORKDIR /app
+COPY package*.json ./
+RUN npm install --production
+
+# 2️⃣ Copiar código fuente
+COPY . .
+
+# 3️⃣ Exponer puerto
+EXPOSE 3003
+
+# 4️⃣ Comando por defecto
+CMD ["npm", "run", "start"]

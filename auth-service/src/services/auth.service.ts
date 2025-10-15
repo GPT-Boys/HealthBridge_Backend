@@ -2,9 +2,11 @@ import { User, type IUser } from "../models/User.js";
 import {
   generateAccessToken,
   generateRefreshToken,
+  verifyAccessToken,
   verifyRefreshToken,
 } from "../utils/jwt.utils.js";
 import { logger } from "../utils/logger.js";
+import axios from "axios";
 
 export interface RegisterData {
   email: string;
@@ -52,13 +54,29 @@ export class AuthService {
 
       await user.save();
 
+      // ✅ Crear perfil extendido en user-service
+      try {
+        const USER_SERVICE_URL = process.env.USER_SERVICE_URL || "http://localhost:3002";
+        await axios.post(`${USER_SERVICE_URL}/users`, {
+          authId: user._id,
+          name: `${user.firstName} ${user.lastName}`,
+          email: user.email,
+          role: user.role,
+          phone: user.profile?.phone || "",
+          specialty: user.profile?.specialization || "",
+        });
+        console.log("✅ Perfil creado en user-service");
+      } catch (error: any) {
+        console.error("❌ Error al crear perfil en user-service:", error.message);
+      }
+
       // Generar tokens
       const accessToken = generateAccessToken(user);
       const refreshToken = generateRefreshToken(user);
 
       // Guardar refresh token
       const refreshTokenExpires = new Date();
-      refreshTokenExpires.setDate(refreshTokenExpires.getDate() + 30); // 30 días
+      refreshTokenExpires.setDate(refreshTokenExpires.getDate() + 30);
 
       user.refreshTokens.push({
         token: refreshToken,

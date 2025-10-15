@@ -1,87 +1,129 @@
-version: "3.9"
+# =============================================
+# 🌐 HealthBridge Backend - Multi-Service Stack
+# =============================================
+
+name: healthbridge-backend
 
 services:
-  # 🧱 MongoDB (compartido)
+  # ----------------------
+  # 🧩 MongoDB Database
+  # ----------------------
   mongodb:
     image: mongo:7.0
-    container_name: healthbridge_mongodb
+    container_name: healthbridge-mongo
     restart: always
     ports:
       - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
     volumes:
       - mongodb_data:/data/db
     networks:
       - healthbridge-network
 
+  # ----------------------
   # 🔐 Auth Service
+  # ----------------------
   auth-service:
-    build: ./auth-service
-    container_name: auth-service
-    ports:
-      - "3001:3001"
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: healthbridge-auth
     env_file:
       - ./auth-service/.env.development
+    ports:
+      - "3001:3001"
     depends_on:
       - mongodb
     networks:
       - healthbridge-network
+    restart: always
 
-  # 👤 User Service
+  # ----------------------
+  # 👥 User Service
+  # ----------------------
   user-service:
-    build: ./user-service
-    container_name: user-service
-    ports:
-      - "3002:3002"
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    container_name: healthbridge-user
     env_file:
       - ./user-service/.env.development
+    ports:
+      - "3002:3002"
     depends_on:
       - mongodb
+      - auth-service
     networks:
       - healthbridge-network
+    restart: always
 
+  # ----------------------
   # 📅 Appointment Service
+  # ----------------------
   appointment-service:
-    build: ./appointment-service
-    container_name: appointment-service
-    ports:
-      - "3003:3003"
+    build:
+      context: ./appointment-service
+      dockerfile: Dockerfile
+    container_name: healthbridge-appointment
     env_file:
       - ./appointment-service/.env.development
+    ports:
+      - "3003:3003"
     depends_on:
       - mongodb
-    networks:
-      - healthbridge-network
-
-  # 💳 Billing Service
-  billing-service:
-    build: ./billing-service
-    container_name: billing-service
-    ports:
-      - "3004:3004"
-    env_file:
-      - ./billing-service/.env.development
-    depends_on:
-      - mongodb
-    networks:
-      - healthbridge-network
-
-  # 🌐 API Gateway
-  gateway:
-    build: ./gateway
-    container_name: gateway
-    ports:
-      - "8080:8080"
-    depends_on:
       - auth-service
       - user-service
-      - appointment-service
-      - billing-service
     networks:
       - healthbridge-network
+    restart: always
+
+  # ----------------------
+  # 🔔 Notification Service
+  # ----------------------
+  notification-service:
+    build:
+      context: ./notification-service
+      dockerfile: Dockerfile
+    container_name: healthbridge-notification
+    env_file:
+      - ./notification-service/.env.development
+    ports:
+      - "3004:3004"
+    depends_on:
+      - mongodb
+      - auth-service
+    networks:
+      - healthbridge-network
+    restart: always
+
+  # ----------------------
+  # 💰 Billing Service
+  # ----------------------
+  billing-service:
+    build:
+      context: ./billing-service
+      dockerfile: Dockerfile
+    container_name: healthbridge-billing
+    env_file:
+      - ./billing-service/.env.development
+    ports:
+      - "3005:3005"
+    depends_on:
+      - mongodb
+      - auth-service
+      - user-service
+    networks:
+      - healthbridge-network
+    restart: always
+
+# --------------------------
+# 🗄️ Shared Volumes & Network
+# --------------------------
+volumes:
+  mongodb_data:
 
 networks:
   healthbridge-network:
     driver: bridge
-
-volumes:
-  mongodb_data:
