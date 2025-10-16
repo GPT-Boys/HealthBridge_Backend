@@ -17,7 +17,15 @@ export const authenticate = async (
     const token = authHeader.split(" ")[1];
     const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || "http://localhost:3001";
 
-    const response = await axios.post(`${AUTH_SERVICE_URL}/api/auth/verify-token`, token);
+    const response = await axios.post(
+      `${AUTH_SERVICE_URL}/api/auth/verify-token`,
+      {}, // cuerpo vacío
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
 
     if (response.data && typeof response.data === "object" && "user" in response.data) {
       req.user = (response.data as any).user;

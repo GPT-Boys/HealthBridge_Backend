@@ -219,7 +219,7 @@ export class AuthService {
 
   async verifyToken(token: string): Promise<IUser> {
     try {
-      const decoded = verifyRefreshToken(token);
+      const decoded = verifyAccessToken(token);
 
       const user = await User.findById(decoded.userId);
       if (!user || !user.isActive) {
