@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  appointment-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: healthbridge-appointment-dev
+    ports:
+      - "3003:3003"
+    environment:
+      - NODE_ENV=development
+      - PORT=3003
+      - MONGODB_URI=mongodb://mongodb:27017/healthbridge_appointments
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production-appointment-service
+      - AUTH_SERVICE_URL=http://auth-service:3001
+      - USER_SERVICE_URL=http://user-service:3002
+      - NOTIFICATION_SERVICE_URL=http://notification-service:3005
+      - LOG_LEVEL=debug
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - appointment-logs:/app/logs
+    depends_on:
+      - mongodb
+    networks:
+      - healthbridge-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  mongodb:
+    image: mongo:7.0-jammy
+    container_name: healthbridge-mongodb-appointments
+    ports:
+      - "27018:27017"  # Puerto diferente para evitar conflictos
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: healthbridge_appointments
+    volumes:
+      - mongodb-data:/data/db
+      - mongodb-config:/data/configdb
+    networks:
+      - healthbridge-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mongodb-data:
+    name: healthbridge-mongodb-appointments-data
+  mongodb-config:
+    name: healthbridge-mongodb-appointments-config
+  appointment-logs:
+    name: healthbridge-appointment-logs
+
+networks:
+  healthbridge-network:
+    name: healthbridge-network
+    driver: bridge

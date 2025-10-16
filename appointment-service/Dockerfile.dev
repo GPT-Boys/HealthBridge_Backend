@@ -1,0 +1,47 @@
+# HealthBridge Appointment Service - Development Dockerfile
+FROM node:18-alpine
+
+LABEL maintainer="HealthBridge Team"
+LABEL version="1.0.0-dev"
+LABEL description="Appointment service for HealthBridge - Development Environment"
+
+# Instalar herramientas de desarrollo
+RUN apk add --no-cache \
+    git \
+    bash \
+    curl \
+    dumb-init \
+    && rm -rf /var/cache/apk/*
+
+# Crear directorio de trabajo
+WORKDIR /app
+
+# Copiar archivos de dependencias
+COPY package*.json ./
+
+# Instalar todas las dependencias (incluidas las de desarrollo)
+RUN npm install
+
+# Crear usuario no-root
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S appointments -u 1001 -G nodejs
+
+# Copiar código fuente
+COPY --chown=appointments:nodejs . .
+
+# Crear directorio de logs
+RUN mkdir -p logs && chown appointments:nodejs logs
+
+# Cambiar a usuario no-root
+USER appointments
+
+# Exponer puerto
+EXPOSE 3003
+
+# Health check para desarrollo
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:3003/health || exit 1
+
+# Comando de desarrollo con hot reload
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["npm", "run", "dev"]
