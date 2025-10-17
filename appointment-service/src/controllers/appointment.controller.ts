@@ -139,7 +139,13 @@ export class AppointmentController {
       });
     } catch (error: any) {
       logger.error('Error en getAppointmentById:', error);
-      res.status(500).json({ error: 'Error interno del servidor' });
+      console.error('❌ Error detallado en createAppointment:', error);
+
+      res.status(500).json({
+        error: 'Error interno del servidor',
+        details: error.message || error
+      });
+
     }
   }
 

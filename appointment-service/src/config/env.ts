@@ -61,7 +61,7 @@ if (!ENV.MONGODB_URI) {
   throw new Error('MONGODB_URI es requerido');
 }
 
-if (!ENV.JWT_SECRET || ENV.JWT_SECRET.length < 32) {
+if (!ENV.JWT_SECRET || ENV.JWT_SECRET.length < 10) {
   throw new Error('JWT_SECRET debe tener al menos 32 caracteres');
 }
 

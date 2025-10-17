@@ -96,7 +96,10 @@ export class AppointmentService {
       const savedAppointment = await appointment.save();
 
       // Enviar notificación al paciente y doctor
+      
+      console.log('➡️ Intentando enviar notificación al servicio de notificaciones...');
       await this.notificationService.sendAppointmentCreatedNotification(savedAppointment);
+
 
       logger.info('Cita creada exitosamente', { 
         appointmentId: savedAppointment._id 
@@ -105,6 +108,8 @@ export class AppointmentService {
       return savedAppointment;
     } catch (error: any) {
       logger.error('Error creando cita:', error);
+      console.error('❌ Error detallado en createAppointment:', error);
+
       throw error;
     }
   }
