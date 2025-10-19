@@ -10,6 +10,16 @@ services:
     networks:
       - healthbridge-net
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"     # Puerto de mensajería
+      - "15672:15672"   # Panel web de administración
+    networks:
+      - healthbridge-net
+
+
   auth-service:
     build: ./auth-service
     container_name: auth-service
@@ -56,12 +66,12 @@ services:
       - "3005:3005"
     env_file:
       - ./notification-service/.env.development
-
-
     depends_on:
       - mongodb
+      - rabbitmq
     networks:
       - healthbridge-net
+
 
 networks:
   healthbridge-net:
