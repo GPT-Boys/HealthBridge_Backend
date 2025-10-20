@@ -1,0 +1,47 @@
+# =====================================================
+# subscription-service/docker-compose.prod.yml
+# Entorno de producción (imagen limpia y compilada)
+# =====================================================
+
+version: "3.8"
+
+name: HB_subscription-service_prod
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: HB_subscription-service_mongodb_prod
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - healthbridge-network
+
+  subscription-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env.production
+    container_name: HB_subscription-service_prod
+    restart: always
+    ports:
+      - "3007:3007"
+    environment:
+      PORT: 3007
+      NODE_ENV: production
+    depends_on:
+      - mongodb
+    networks:
+      - healthbridge-network
+
+volumes:
+  mongodb_data:
+
+networks:
+  healthbridge-network:
+    driver: bridge

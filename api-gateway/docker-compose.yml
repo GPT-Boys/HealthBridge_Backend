@@ -1,0 +1,39 @@
+version: "3.8"
+
+name: HB_API-Gateway_dev
+services:
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    env_file:
+      - .env.development
+    container_name: HB_API-Gateway_dev
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: development
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ./logs:/app/logs
+    networks:
+      - healthbridge-network
+    # healthcheck:
+    #   test:
+    #     [
+    #       "CMD",
+    #       "node",
+    #       "-e",
+    #       "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})",
+    #     ]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
+
+networks:
+  healthbridge-network:
+    driver: bridge
