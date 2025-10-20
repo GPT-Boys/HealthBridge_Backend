@@ -1,20 +1,52 @@
+# ===============================
+# 🚫 Archivos y carpetas locales
+# ===============================
 node_modules
-npm-debug.log
-dist
+tmp
+temp
 logs
 *.log
+
+# ===============================
+# 🧰 Archivos de configuración locales
+# ===============================
 .env
-.env.*
-!.env.example
-.git
-.gitignore
-README.md
-*.md
+.env.local
+# .env.development
+.env.test
+# .env.production
+
+# ===============================
+# ⚙️ Archivos de sistema / IDE
+# ===============================
+.DS_Store
+Thumbs.db
 .vscode
 .idea
+*.swp
+*.swo
+
+# ===============================
+# 🧪 Archivos de test o desarrollo
+# ===============================
 coverage
-.nyc_output
-*.test.ts
 *.spec.ts
+*.test.ts
+jest.config.js
+
+# ===============================
+# 🐳 Docker
+# ===============================
 Dockerfile
+docker-compose.yml
+Dockerfile.dev
+docker-compose.prod.yml
 .dockerignore
+
+# ===============================
+# 📦 Otros innecesarios
+# ===============================
+README.md
+LICENSE
+.git
+.gitignore
