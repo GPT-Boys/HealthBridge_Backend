@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  billing-service:
+    build:
+      context: .
+      dockerfile: ./billing-service/Dockerfile
+    container_name: billing-service
+    restart: unless-stopped
+    env_file:
+      - ./billing-service/.env.development
+    ports:
+      - "3006:3006"
+    depends_on:
+      - mongo
+    networks:
+      - healthbridge-net
+
+  mongo:
+    image: mongo:7.0
+    container_name: mongo-billing
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_billing_data:/data/db
+    networks:
+      - healthbridge-net
+
+volumes:
+  mongo_billing_data:
+
+networks:
+  healthbridge-net:
+    driver: bridge

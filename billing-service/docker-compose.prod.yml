@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  billing-service:
+    build:
+      context: .
+      dockerfile: ./billing-service/Dockerfile
+    container_name: billing-service-prod
+    restart: unless-stopped
+    env_file:
+      - ./billing-service/.env.production
+    ports:
+      - "3006:3006"
+    networks:
+      - healthbridge-prod-net
+    environment:
+      - NODE_ENV=production
+      # Asegúrate de que la variable MONGODB_URI apunte a tu MongoDB Atlas
+      # Puedes sobreescribirla en .env.production o aquí directamente
+      # - MONGODB_URI=mongodb+srv://<usuario>:<password>@<cluster>.mongodb.net/healthbridge
+
+networks:
+  healthbridge-prod-net:
+    driver: bridge
