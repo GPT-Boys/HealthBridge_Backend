@@ -1,111 +1,258 @@
-import express from "express";
+// =====================================================
+// src/index.ts
+// =====================================================
+
+import express, { type Application, type Request, type Response } from "express";
 import { createProxyMiddleware } from "http-proxy-middleware";
-import cors from "cors";
 import helmet from "helmet";
-import morgan from "morgan";
-import rateLimit from "express-rate-limit";
-import jwt from "jsonwebtoken";
-import dotenv from "dotenv";
+import compression from "compression";
+import { logger } from "./utils/logger.js";
+import { HealthChecker } from "./utils/healthCheck.js";
+import { requestTracker } from "./utils/requestTracker.js";
+import { services } from "./config/services.config.js";
+import { createProxyOptions } from "./config/proxy.config.js";
+import { corsMiddleware } from "./middleware/cors.middleware.js";
+import { morganMiddleware, requestLogger } from "./middleware/logger.middleware.js";
+import { generalLimiter, authLimiter } from "./middleware/rateLimit.middleware.js";
+import { authMiddleware } from "./middleware/auth.middleware.js";
+import { errorHandler, notFoundHandler } from "./middleware/errorHandler.middleware.js";
+import ENV from "./config/env.js";
 
-dotenv.config();
+const app: Application = express();
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+// Initialize services map for health checker
+const servicesMap: { [key: string]: string } = {};
+services.forEach((service) => {
+  servicesMap[service.name] = service.url;
+});
+const healthChecker = new HealthChecker(servicesMap);
 
-// Middleware de seguridad
-app.use(helmet());
+// =====================================================
+// SECURITY MIDDLEWARE
+// =====================================================
 app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
-    credentials: true,
+  helmet({
+    contentSecurityPolicy: ENV.NODE_ENV === "production" ? true : false,
+    crossOriginEmbedderPolicy: false,
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
   })
 );
-app.use(morgan("combined"));
+
+app.use(corsMiddleware);
+app.use(compression());
+
+// =====================================================
+// REQUEST PROCESSING MIDDLEWARE
+// =====================================================
+app.use(requestTracker);
 app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100, // límite de 100 requests por IP
-  message: "Demasiadas solicitudes desde esta IP",
-});
-app.use(limiter);
+// =====================================================
+// LOGGING MIDDLEWARE
+// =====================================================
+app.use(morganMiddleware);
+app.use(requestLogger);
 
-// Middleware de autenticación
-const authMiddleware = (req: any, res: any, next: any) => {
-  const publicRoutes = ["/api/auth/login", "/api/auth/register", "/api/health"];
+// =====================================================
+// RATE LIMITING MIDDLEWARE
+// =====================================================
+app.use(generalLimiter);
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", authLimiter);
 
-  if (publicRoutes.some((route) => req.path.startsWith(route))) {
-    return next();
-  }
-
-  const token = req.headers.authorization?.split(" ")[1];
-
-  if (!token) {
-    return res.status(401).json({ error: "Token requerido" });
-  }
-
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "secret");
-    req.user = decoded;
-    next();
-  } catch (error) {
-    res.status(401).json({ error: `Token inválido. - ${error}` });
-  }
-};
-
+// =====================================================
+// AUTHENTICATION MIDDLEWARE
+// =====================================================
 app.use(authMiddleware);
 
-// Configuración de microservicios
-const services = {
-  auth: process.env.AUTH_SERVICE_URL || "http://localhost:3001",
-  user: process.env.USER_SERVICE_URL || "http://localhost:3002",
-  appointment: process.env.APPOINTMENT_SERVICE_URL || "http://localhost:3003",
-  medicalRecord:
-    process.env.MEDICAL_RECORD_SERVICE_URL || "http://localhost:3004",
-  notification: process.env.NOTIFICATION_SERVICE_URL || "http://localhost:3005",
-  billing: process.env.BILLING_SERVICE_URL || "http://localhost:3006",
-};
+// =====================================================
+// API GATEWAY ROUTES
+// =====================================================
 
-// Proxies para cada microservicio
-Object.entries(services).forEach(([serviceName, serviceUrl]) => {
-  app.use(
-    `/api/${serviceName}`,
-    createProxyMiddleware({
-      target: serviceUrl,
-      changeOrigin: true,
-      pathRewrite: {
-        [`^/api/${serviceName}`]: "",
-      },
-      //   onProxyError: (err, req, res) => {
-      //     console.error(`Proxy error for ${serviceName}:`, err);
-      //     res.status(503).json({ error: `Servicio ${serviceName} no disponible` });
-      //   }
-    })
-  );
-});
-
-// Health check
-app.get("/health", (req, res) => {
+// Root route
+app.get("/", (req: Request, res: Response) => {
   res.json({
-    status: "OK",
-    timestamp: new Date().toISOString(),
-    services: Object.keys(services),
+    service: "HealthBridge API Gateway",
+    version: "1.0.0",
+    status: "running",
+    environment: ENV.NODE_ENV,
+    timestamp: new Date().toLocaleString("en-US", {
+      timeZone: "America/La_Paz",
+    }),
+    documentation: "/api/docs",
+    health: "/health",
+    metrics: "/metrics",
+    requestId: req.requestId,
   });
 });
 
-// Manejo de errores
-app.use((err: any, req: any, res: any, _next: any) => {
-  console.error(err.stack);
-  res.status(500).json({ error: "Error interno del servidor" });
+// Health check endpoint
+app.get("/health", async (req: Request, res: Response) => {
+  try {
+    const servicesHealth = await healthChecker.checkAllServices();
+    const overallHealth = healthChecker.getOverallHealth();
+
+    const healthData = {
+      api_gateway: {
+        status: "healthy",
+        uptime: process.uptime(),
+        timestamp: new Date().toLocaleString("en-US", {
+          timeZone: "America/La_Paz",
+        }),
+        environment: ENV.NODE_ENV,
+        memory: {
+          used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+          total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+          unit: "MB",
+        },
+        cpu: process.cpuUsage(),
+      },
+      services: Object.fromEntries(servicesHealth),
+      overall: overallHealth,
+      requestId: req.requestId,
+    };
+
+    const statusCode = overallHealth === "healthy" ? 200 : overallHealth === "degraded" ? 207 : 503;
+
+    res.status(statusCode).json(healthData);
+  } catch (error) {
+    logger.error("Error en health check:", { requestId: req.requestId, error });
+    res.status(500).json({
+      api_gateway: {
+        status: "unhealthy",
+        error: "Error checking services health",
+      },
+      requestId: req.requestId,
+    });
+  }
 });
 
-// 404 handler
-app.use("*", (req, res) => {
-  res.status(404).json({ error: "Ruta no encontrada" });
+// Metrics endpoint
+app.get("/metrics", (req: Request, res: Response) => {
+  const metrics = {
+    api_gateway: {
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      cpu: process.cpuUsage(),
+      environment: ENV.NODE_ENV,
+    },
+    services: Object.fromEntries(healthChecker.getHealthStatus()),
+    timestamp: new Date().toLocaleString("en-US", {
+      timeZone: "America/La_Paz",
+    }),
+    requestId: req.requestId,
+  };
+
+  res.json(metrics);
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 API Gateway corriendo en puerto ${PORT}`);
-  console.log(`📊 Health check disponible en http://localhost:${PORT}/health`);
+// Services info endpoint
+app.get("/services", (req: Request, res: Response) => {
+  const servicesInfo = services.map((service) => ({
+    name: service.name,
+    path: service.path,
+    description: service.description,
+    requiresAuth: service.requiresAuth,
+  }));
+
+  res.json({
+    services: servicesInfo,
+    total: servicesInfo.length,
+    requestId: req.requestId,
+  });
 });
+
+// =====================================================
+// CONFIGURE PROXIES FOR EACH MICROSERVICE
+// =====================================================
+services.forEach((service) => {
+  const proxyOptions = createProxyOptions(service.url, service.path, service.timeout);
+
+  logger.info(`Configurando proxy para ${service.name}`, {
+    path: service.path,
+    target: service.url,
+    timeout: service.timeout,
+    requiresAuth: service.requiresAuth,
+  });
+
+  app.use(service.path, createProxyMiddleware(proxyOptions));
+});
+
+// =====================================================
+// ERROR HANDLERS
+// =====================================================
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+// =====================================================
+// SERVER STARTUP
+// =====================================================
+const startServer = async () => {
+  try {
+    app.listen(ENV.PORT, () => {
+      logger.info(`🚀 API Gateway corriendo en puerto ${ENV.PORT} (${ENV.NODE_ENV})`);
+
+      logger.info(`
+╔═══════════════════════════════════════════════════════╗
+║                                                       ║
+║   🚪 HealthBridge API Gateway                         ║
+║                                                       ║
+║   Status:      ✅ Running                             ║
+║   Environment: ${ENV.NODE_ENV.padEnd(12)}                   ║
+║   Port:        ${ENV.PORT}                                    ║
+║   URL:         http://localhost:${ENV.PORT}                  ║
+║   Health:      http://localhost:${ENV.PORT}/health           ║
+║   Metrics:     http://localhost:${ENV.PORT}/metrics          ║
+║   Services:    http://localhost:${ENV.PORT}/services         ║
+║                                                       ║
+║   Time:        ${new Date().toLocaleString("es-ES", { timeZone: "America/La_Paz" })}        ║
+║                                                       ║
+╚═══════════════════════════════════════════════════════╝
+      `);
+
+      if (ENV.NODE_ENV === "development") {
+        logger.info("📋 Servicios configurados:");
+        services.forEach((service) => {
+          logger.info(
+            `   ${service.path.padEnd(25)} -> ${service.url.padEnd(35)} (${service.name})`
+          );
+        });
+      }
+    });
+
+    // Start health checks
+    healthChecker.startPeriodicChecks(ENV.HEALTH_CHECK_INTERVAL);
+
+    // Graceful shutdown
+    const gracefulShutdown = async (signal: string) => {
+      logger.info(`\n${signal} recibido. Cerrando API Gateway gracefully...`);
+      healthChecker.stopPeriodicChecks();
+      process.exit(0);
+    };
+
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+  } catch (error) {
+    logger.error("❌ Error al iniciar el API Gateway:", error);
+    process.exit(1);
+  }
+};
+
+// Handle uncaught errors
+process.on("unhandledRejection", (reason: any) => {
+  logger.error("Unhandled Promise Rejection:", reason);
+});
+
+process.on("uncaughtException", (error: Error) => {
+  logger.error("Uncaught Exception:", error);
+  process.exit(1);
+});
+
+startServer();
+
+export default app;
