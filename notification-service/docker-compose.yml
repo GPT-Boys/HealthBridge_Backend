@@ -1,0 +1,39 @@
+services:
+  notification-service:
+    build: .
+    container_name: notification-service
+    ports:
+      - "3005:3005"
+    env_file:
+      - .env.development
+    depends_on:
+      - mongodb
+      - rabbitmq
+    networks:
+      - healthbridge-network
+
+  mongodb:
+    image: mongo:6
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - healthbridge-network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - healthbridge-network
+
+networks:
+  healthbridge-network:
+    driver: bridge
+
+volumes:
+  mongo-data:

@@ -1,179 +1,78 @@
-version: "3.8"
-
-name: healthbridge-microservices
+version: '3.9'
 services:
-  # MongoDB
   mongodb:
-    image: mongo:7.0
-    container_name: HB_mongodb
-    restart: always
+    image: mongo:6
+    container_name: mongodb
     ports:
       - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: password123
     volumes:
-      - mongodb_data:/data/db
+      - ./mongo-data:/data/db
     networks:
-      - healthbridge-network
+      - healthbridge-net
 
-  # RabbitMQ
   rabbitmq:
-    image: rabbitmq:3.12-management
-    container_name: HB_rabbitmq
-    restart: always
+    image: rabbitmq:3-management
+    container_name: rabbitmq
     ports:
-      - "5672:5672"
-      - "15672:15672"
-    environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: password123
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
+      - "5672:5672"     # Puerto de mensajería
+      - "15672:15672"   # Panel web de administración
     networks:
-      - healthbridge-network
+      - healthbridge-net
 
-  # API Gateway
-  api-gateway:
-    build: ./api-gateway
-    container_name: HB_API-Gateway
-    restart: always
-    ports:
-      - "3000:3000"
-    environment:
-      PORT: 3000
-      JWT_SECRET: your-super-secret-jwt-key-here
-      FRONTEND_URL: http://localhost:5173
-      AUTH_SERVICE_URL: http://auth-service:3001
-      USER_SERVICE_URL: http://user-service:3002
-      APPOINTMENT_SERVICE_URL: http://appointment-service:3003
-      MEDICAL_RECORD_SERVICE_URL: http://medical-record-service:3004
-      NOTIFICATION_SERVICE_URL: http://notification-service:3005
-      BILLING_SERVICE_URL: http://billing-service:3006
-    depends_on:
-      - auth-service
-      - user-service
-      - appointment-service
-      - medical-record-service
-      - notification-service
-      - billing-service
-    networks:
-      - healthbridge-network
 
-  # Auth Service
   auth-service:
     build: ./auth-service
-    container_name: HB_auth-service
-    restart: always
+    container_name: auth-service
     ports:
       - "3001:3001"
     env_file:
       - ./auth-service/.env.development
-    environment:
-      PORT: 3001
-      MONGODB_URI: mongodb+srv://osquimenacho2002_db_user:LLLWy0c83sos1xN0@healthbridge.pykxi5g.mongodb.net/HB_auth-service_prod_DB?retryWrites=true&w=majority&appName=HealthBridge
-      JWT_SECRET: your-super-secret-jwt-key-here
     depends_on:
       - mongodb
     networks:
-      - healthbridge-network
+      - healthbridge-net
 
-  # User Service
   user-service:
     build: ./user-service
-    container_name: HB_user-service
-    restart: always
+    container_name: user-service
     ports:
       - "3002:3002"
     env_file:
       - ./user-service/.env.development
-    environment:
-      PORT: 3002
-      MONGODB_URI: mongodb+srv://osquimenacho2002_db_user:LLLWy0c83sos1xN0@healthbridge.pykxi5g.mongodb.net/HB_user-service_prod_DB?retryWrites=true&w=majority&appName=HealthBridge
     depends_on:
       - mongodb
+      - auth-service
     networks:
-      - healthbridge-network
+      - healthbridge-net
 
-  # Appointment Service
   appointment-service:
     build: ./appointment-service
-    container_name: HB_appointment-service
-    restart: always
+    container_name: appointment-service
     ports:
       - "3003:3003"
     env_file:
       - ./appointment-service/.env.development
-    environment:
-      PORT: 3003
-      MONGODB_URI: mongodb+srv://osquimenacho2002_db_user:LLLWy0c83sos1xN0@healthbridge.pykxi5g.mongodb.net/HB_appointment-service_prod_DB?retryWrites=true&w=majority&appName=HealthBridge
-      NOTIFICATION_SERVICE_URL: http://notification-service:3005
     depends_on:
       - mongodb
+      - auth-service
+      - user-service
     networks:
-      - healthbridge-network
+      - healthbridge-net
 
-  # Medical Record Service
-  medical-record-service:
-    build: ./medical-record-service
-    container_name: HB_medical-record-service
-    restart: always
-    ports:
-      - "3004:3004"
-    environment:
-      PORT: 3004
-      MONGODB_URI: mongodb+srv://osquimenacho2002_db_user:LLLWy0c83sos1xN0@healthbridge.pykxi5g.mongodb.net/HB_medical-record-service_prod_DB?retryWrites=true&w=majority&appName=HealthBridge
-    depends_on:
-      - mongodb
-    networks:
-      - healthbridge-network
-
-  # Notification Service
   notification-service:
     build: ./notification-service
-    container_name: HB_notification-service
-    restart: always
+    container_name: notification-service
     ports:
       - "3005:3005"
-    environment:
-      PORT: 3005
-      MONGODB_URI: mongodb+srv://osquimenacho2002_db_user:LLLWy0c83sos1xN0@healthbridge.pykxi5g.mongodb.net/HB_notification-service_prod_DB?retryWrites=true&w=majority&appName=HealthBridge
-      RABBITMQ_URL: amqp://admin:password123@rabbitmq:5672
-      EMAIL_USER: no.reply.healthbridge@gmail.com
-      EMAIL_PASSWORD: your-app-password
-      TWILIO_ACCOUNT_SID: your-twilio-sid
-      TWILIO_AUTH_TOKEN: your-twilio-token
-      TWILIO_PHONE_NUMBER: +1234567890
-      INTERNAL_API_KEY: internal-secret-key
+    env_file:
+      - ./notification-service/.env.development
     depends_on:
       - mongodb
       - rabbitmq
     networks:
-      - healthbridge-network
+      - healthbridge-net
 
-  # Billing Service
-  billing-service:
-    build: ./billing-service
-    container_name: HB_billing-service
-    restart: always
-    ports:
-      - "3006:3006"
-    env_file:
-      - ./billing-service/.env.development
-    environment:
-      PORT: 3006
-      MONGODB_URI: mongodb+srv://osquimenacho2002_db_user:LLLWy0c83sos1xN0@healthbridge.pykxi5g.mongodb.net/HB_billing-service_prod_DB?retryWrites=true&w=majority&appName=HealthBridge
-      STRIPE_SECRET_KEY: sk_test_your_stripe_secret_key
-      STRIPE_WEBHOOK_SECRET: whsec_your_webhook_secret
-    depends_on:
-      - mongodb
-    networks:
-      - healthbridge-network
-
-volumes:
-  mongodb_data:
-  rabbitmq_data:
 
 networks:
-  healthbridge-network:
+  healthbridge-net:
     driver: bridge
