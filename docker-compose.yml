@@ -1,28 +1,66 @@
-version: '3.9'
+# =====================================================
+# HEALTHBRIDGE BACKEND - GLOBAL COMPOSE
+# Versión completa y funcional con todos los microservicios
+# =====================================================
+
+version: "3.8"
+
 services:
+  # -------------------------------------------
+  # MongoDB
+  # -------------------------------------------
   mongodb:
-    image: mongo:6
+    image: mongo:7.0
     container_name: mongodb
+    restart: always
     ports:
       - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
     volumes:
       - ./mongo-data:/data/db
     networks:
       - healthbridge-net
 
+  # -------------------------------------------
+  # RabbitMQ
+  # -------------------------------------------
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
+    restart: always
     ports:
       - "5672:5672"     # Puerto de mensajería
       - "15672:15672"   # Panel web de administración
     networks:
       - healthbridge-net
-
-
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile.dev
+    env_file:
+      - ./api-gateway/.env.example
+    container_name: HB_API-Gateway_dev
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: development
+    volumes:
+      - ./api-gateway:/app
+      - /app/node_modules
+      - ./api-gateway/logs:/app/logs
+    networks:
+      - healthbridge-net
+  # -------------------------------------------
+  # Auth Service
+  # -------------------------------------------
   auth-service:
     build: ./auth-service
     container_name: auth-service
+    restart: always
     ports:
       - "3001:3001"
     env_file:
@@ -32,9 +70,13 @@ services:
     networks:
       - healthbridge-net
 
+  # -------------------------------------------
+  # User Service
+  # -------------------------------------------
   user-service:
     build: ./user-service
     container_name: user-service
+    restart: always
     ports:
       - "3002:3002"
     env_file:
@@ -45,9 +87,13 @@ services:
     networks:
       - healthbridge-net
 
+  # -------------------------------------------
+  # Appointment Service
+  # -------------------------------------------
   appointment-service:
     build: ./appointment-service
     container_name: appointment-service
+    restart: always
     ports:
       - "3003:3003"
     env_file:
@@ -59,9 +105,13 @@ services:
     networks:
       - healthbridge-net
 
+  # -------------------------------------------
+  # Notification Service
+  # -------------------------------------------
   notification-service:
     build: ./notification-service
     container_name: notification-service
+    restart: always
     ports:
       - "3005:3005"
     env_file:
@@ -72,6 +122,45 @@ services:
     networks:
       - healthbridge-net
 
+  # -------------------------------------------
+  # Billing Service
+  # -------------------------------------------
+  billing-service:
+    build: ./billing-service
+    container_name: billing-service
+    restart: always
+    ports:
+      - "3006:3006"
+    env_file:
+      - ./billing-service/.env.development
+    depends_on:
+      - mongodb
+    networks:
+      - healthbridge-net
+
+  # -------------------------------------------
+  # Subscription Service
+  # -------------------------------------------
+  subscription-service:
+    build: ./subscription-service
+    container_name: subscription-service
+    restart: always
+    ports:
+      - "3007:3007"
+    env_file:
+      - ./subscription-service/.env.development
+    depends_on:
+      - mongodb
+      - auth-service
+
+    networks:
+      - healthbridge-net
+
+# -------------------------------------------
+# Volúmenes y redes compartidas
+# -------------------------------------------
+volumes:
+  mongo-data:
 
 networks:
   healthbridge-net:
