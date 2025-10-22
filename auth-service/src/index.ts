@@ -25,7 +25,7 @@ const allowedOrigins = ENV.ALLOWED_ORIGINS?.split(",") || [
 const corsOptions = {
   origin: (
     origin: string | undefined,
-    callback: (err: Error | null, allow?: boolean) => void,
+    callback: (err: Error | null, allow?: boolean) => void
   ) => {
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -53,7 +53,7 @@ app.use(
       includeSubDomains: true,
       preload: true,
     },
-  }),
+  })
 );
 
 app.use(cors(corsOptions));
@@ -72,7 +72,7 @@ if (ENV.NODE_ENV === "development" || ENV.NODE_ENV === "test") {
       stream: {
         write: (message: string) => logger.info(message.trim()),
       },
-    }),
+    })
   );
 }
 
@@ -150,6 +150,9 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
     stack: err.stack,
     path: req.path,
     method: req.method,
+    body: req.body,
+    query: req.query,
+    ip: req.ip,
   });
 
   if (res.headersSent) {
@@ -176,7 +179,7 @@ const startServer = async () => {
     // Iniciar servidor
     app.listen(ENV.PORT, () => {
       logger.info(
-        `🚀 Servidor corriendo en puerto ${ENV.PORT} (${ENV.NODE_ENV})`,
+        `🚀 Servidor corriendo en puerto ${ENV.PORT} (${ENV.NODE_ENV})`
       );
 
       logger.info(`

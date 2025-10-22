@@ -1,20 +1,25 @@
 import { type Options } from "http-proxy-middleware";
+import type { IncomingMessage, ServerResponse } from "http";
 import { logger } from "../utils/logger.js";
 import ENV from "./env.js";
 
 export const createProxyOptions = (
   targetUrl: string,
-  pathPrefix: string,
+  // pathPrefix: string,
   timeout: number = ENV.PROXY_TIMEOUT
-): Options & Record<string, any> => {
+): Options<IncomingMessage, ServerResponse> & Record<string, any> => {
   return {
     target: targetUrl,
     changeOrigin: ENV.PROXY_CHANGE_ORIGIN,
-    pathRewrite: {
-      [`^${pathPrefix}`]: "",
-    },
+    // pathRewrite: {
+    //   [`^${pathPrefix}`]: "",
+    // },
     timeout,
     proxyTimeout: timeout,
+    secure: false,
+    followRedirects: true,
+    preserveHeaderKeyCase: true,
+    logLevel: "debug",
     onProxyReq: (proxyReq: any, req: any) => {
       // Add custom headers with user info
       if (req.user) {
@@ -28,12 +33,20 @@ export const createProxyOptions = (
         proxyReq.setHeader("X-Request-Id", req.requestId);
       }
 
+      // ✅ Reenviar el body en métodos con payload
+      if (req.body && (req.method === "POST" || req.method === "PUT" || req.method === "PATCH")) {
+        const bodyData = JSON.stringify(req.body);
+        proxyReq.setHeader("Content-Type", "application/json");
+        proxyReq.setHeader("Content-Length", Buffer.byteLength(bodyData));
+        proxyReq.write(bodyData);
+      }
+
       logger.http("Proxy request", {
         requestId: req.requestId,
         method: req.method,
         path: req.path,
         target: targetUrl,
-        userId: req.user?.userId,
+        headers: req.headers,
       });
     },
     onProxyRes: (proxyRes: any, req: any) => {

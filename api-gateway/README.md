@@ -172,7 +172,7 @@ Authorization: Bearer <tu-token-jwt>
 
 ```javascript
 const api = axios.create({
-  baseURL: "http://localhost:3000/api",
+  baseURL: "http://localhost:3000",
   headers: {
     Authorization: `Bearer ${token}`,
   },

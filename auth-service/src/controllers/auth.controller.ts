@@ -46,6 +46,7 @@ export class AuthController {
   async login(req: Request, res: Response): Promise<void> {
     try {
       const { email, password } = req.body;
+      logger.info("Login request", { email, password });
       const userAgent = req.headers["user-agent"];
 
       const result = await authService.login({ email, password }, userAgent);

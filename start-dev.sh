@@ -56,12 +56,13 @@ echo "🎯 Iniciando microservicios en modo desarrollo..."
 
 # Configurar variables de entorno
 export JWT_SECRET="your-super-secret-jwt-key-here"
+export JWT_REFRESH_SECRET="your-super-secret-refresh-key-here"
 export MONGODB_URI_BASE="mongodb+srv://osquimenacho2002_db_user:LLLWy0c83sos1xN0@healthbridge.pykxi5g.mongodb.net"
 export RABBITMQ_URL="amqp://admin:password123@localhost:5672"
 export INTERNAL_API_KEY="ffQ56sSjipEcRMtrtNsqShb1qFZUB98S"
 
 # Iniciar servicios en paralelo
-(cd auth-service && PORT=3001 MONGODB_URI="${MONGODB_URI_BASE}/HB_auth-service_prod_DB?retryWrites=true&w=majority&appName=HealthBridge" npm run dev) &
+(cd auth-service && PORT=3001 MONGODB_URI="${MONGODB_URI_BASE}/HB_auth-service_prod_DB?retryWrites=true&w=majority&appName=HealthBridge" JWT_SECRET="${JWT_SECRET}" JWT_REFRESH_SECRET="${JWT_REFRESH_SECRET}" npm run dev) &
 (cd user-service && PORT=3002 MONGODB_URI="${MONGODB_URI_BASE}/HB_user-service_prod_DB?retryWrites=true&w=majority&appName=HealthBridge" npm run dev) &
 (cd appointment-service && PORT=3003 MONGODB_URI="${MONGODB_URI_BASE}/HB_appointment-service_prod_DB?retryWrites=true&w=majority&appName=HealthBridge" npm run dev) &
 (cd medical-record-service && PORT=3004 MONGODB_URI="${MONGODB_URI_BASE}/HB_medical-record-servic_prod_DB?retryWrites=true&w=majority&appName=HealthBridge" npm run dev) &
