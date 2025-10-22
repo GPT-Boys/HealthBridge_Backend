@@ -1,9 +1,11 @@
 # =====================================================
-# HEALTHBRIDGE BACKEND - GLOBAL COMPOSE
-# Versión completa y funcional con todos los microservicios
+# HEALTHBRIDGE BACKEND - GLOBAL COMPOSE (versión final estable)
+# -----------------------------------------------------
+# ✔ MongoDB estable y persistente
+# ✔ RabbitMQ con DNS interno
+# ✔ Retrasos controlados en dependencias
+# ✔ Logs mapeados
 # =====================================================
-
-version: "3.8"
 
 services:
   # -------------------------------------------
@@ -20,6 +22,11 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: password123
     volumes:
       - ./mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - healthbridge-net
 
@@ -31,20 +38,29 @@ services:
     container_name: rabbitmq
     restart: always
     ports:
-      - "5672:5672"     # Puerto de mensajería
-      - "15672:15672"   # Panel web de administración
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - healthbridge-net
+
+  # -------------------------------------------
+  # API Gateway
+  # -------------------------------------------
   api-gateway:
     build:
       context: ./api-gateway
       dockerfile: Dockerfile.dev
-    env_file:
-      - ./api-gateway/.env.example
-    container_name: HB_API-Gateway_dev
+    container_name: hb-api-gateway
     restart: always
     ports:
       - "3000:3000"
+    env_file:
+      - ./api-gateway/.env.example
     environment:
       PORT: 3000
       NODE_ENV: development
@@ -52,8 +68,13 @@ services:
       - ./api-gateway:/app
       - /app/node_modules
       - ./api-gateway/logs:/app/logs
+    depends_on:
+      - auth-service
+      - user-service
+      - appointment-service
     networks:
       - healthbridge-net
+
   # -------------------------------------------
   # Auth Service
   # -------------------------------------------
@@ -64,9 +85,10 @@ services:
     ports:
       - "3001:3001"
     env_file:
-      - ./auth-service/.env.development
+      - ./auth-service/.env.final
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     networks:
       - healthbridge-net
 
@@ -80,10 +102,12 @@ services:
     ports:
       - "3002:3002"
     env_file:
-      - ./user-service/.env.development
+      - ./user-service/.env.final
     depends_on:
-      - mongodb
-      - auth-service
+      mongodb:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
     networks:
       - healthbridge-net
 
@@ -97,11 +121,14 @@ services:
     ports:
       - "3003:3003"
     env_file:
-      - ./appointment-service/.env.development
+      - ./appointment-service/.env.final
     depends_on:
-      - mongodb
-      - auth-service
-      - user-service
+      mongodb:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      user-service:
+        condition: service_started
     networks:
       - healthbridge-net
 
@@ -115,10 +142,12 @@ services:
     ports:
       - "3005:3005"
     env_file:
-      - ./notification-service/.env.development
+      - ./notification-service/.env.final
     depends_on:
-      - mongodb
-      - rabbitmq
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - healthbridge-net
 
@@ -132,9 +161,10 @@ services:
     ports:
       - "3006:3006"
     env_file:
-      - ./billing-service/.env.development
+      - ./billing-service/.env.final
     depends_on:
-      - mongodb
+      mongodb:
+        condition: service_healthy
     networks:
       - healthbridge-net
 
@@ -148,11 +178,14 @@ services:
     ports:
       - "3007:3007"
     env_file:
-      - ./subscription-service/.env.development
+      - ./subscription-service/.env.final
     depends_on:
-      - mongodb
-      - auth-service
-
+      mongodb:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+      billing-service:
+        condition: service_started
     networks:
       - healthbridge-net
 

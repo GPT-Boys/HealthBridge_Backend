@@ -1,26 +1,20 @@
-# ===============================
-# HealthBridge Microservice Base
-# ===============================
-
-# 1️⃣ Etapa base (construcción)
-FROM node:20-alpine AS base
+# Etapa 1: build
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# Copiar definiciones de dependencias
 COPY package*.json ./
+RUN npm install
 
-# Instalar dependencias (solo las necesarias para producción)
+COPY . .
+RUN npm run build
+
+# Etapa 2: ejecución
+FROM node:20-alpine
+WORKDIR /app
+
+COPY --from=builder /app/dist ./dist
+COPY package*.json ./
 RUN npm install --omit=dev
 
-# Copiar el código fuente
-COPY . .
-
-# Variables de entorno por defecto (puedes sobreescribirlas en docker-compose.yml)
-ENV NODE_ENV=production
-
-
-# Exponer el puerto correcto para billing-service
 EXPOSE 3006
-
-# 3️⃣ Comando para iniciar el servicio
 CMD ["node", "dist/index.js"]
