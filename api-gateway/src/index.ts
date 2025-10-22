@@ -6,7 +6,7 @@ import express, { type Application, type Request, type Response } from "express"
 import { createProxyMiddleware } from "http-proxy-middleware";
 import helmet from "helmet";
 import compression from "compression";
-import axios from "axios";
+// import axios from "axios";
 import { logger } from "./utils/logger.js";
 import { HealthChecker } from "./utils/healthCheck.js";
 import { requestTracker } from "./utils/requestTracker.js";
@@ -173,69 +173,69 @@ app.get("/services", (req: Request, res: Response) => {
 // =====================================================
 
 // Helper function para manejar requests directos al auth service
-const handleAuthRequest = async (req: Request, res: Response, endpoint: string) => {
-  try {
-    logger.info(`Direct ${endpoint} request`, {
-      requestId: req.requestId,
-      body: req.body,
-    });
+// const handleAuthRequest = async (req: Request, res: Response, endpoint: string) => {
+//   try {
+//     logger.info(`Direct ${endpoint} request`, {
+//       requestId: req.requestId,
+//       body: req.body,
+//     });
 
-    const response = await axios.post(`${ENV.AUTH_SERVICE_URL}/api/auth/${endpoint}`, req.body, {
-      headers: {
-        "Content-Type": "application/json",
-        "X-Request-Id": req.requestId,
-      },
-      timeout: 10000,
-    });
+//     const response = await axios.post(`${ENV.AUTH_SERVICE_URL}/api/auth/${endpoint}`, req.body, {
+//       headers: {
+//         "Content-Type": "application/json",
+//         "X-Request-Id": req.requestId,
+//       },
+//       timeout: 10000,
+//     });
 
-    logger.info(`Direct ${endpoint} response`, {
-      requestId: req.requestId,
-      status: response.status,
-    });
+//     logger.info(`Direct ${endpoint} response`, {
+//       requestId: req.requestId,
+//       status: response.status,
+//     });
 
-    res.status(response.status).json(response.data);
-  } catch (error: any) {
-    logger.error(`Direct ${endpoint} error`, {
-      requestId: req.requestId,
-      error: error.message,
-    });
+//     res.status(response.status).json(response.data);
+//   } catch (error: any) {
+//     logger.error(`Direct ${endpoint} error`, {
+//       requestId: req.requestId,
+//       error: error.message,
+//     });
 
-    if (error.response) {
-      res.status(error.response.status).json(error.response.data);
-    } else {
-      res.status(500).json({
-        error: "Error interno del servidor",
-        message: `Error procesando la solicitud de ${endpoint}`,
-        requestId: req.requestId,
-      });
-    }
-  }
-};
+//     if (error.response) {
+//       res.status(error.response.status).json(error.response.data);
+//     } else {
+//       res.status(500).json({
+//         error: "Error interno del servidor",
+//         message: `Error procesando la solicitud de ${endpoint}`,
+//         requestId: req.requestId,
+//       });
+//     }
+//   }
+// };
 
 // Rutas directas para todos los endpoints POST del auth service
-app.post("/api/auth/login", async (req: Request, res: Response) => {
-  await handleAuthRequest(req, res, "login");
-});
+// app.post("/api/auth/login", async (req: Request, res: Response) => {
+//   await handleAuthRequest(req, res, "login");
+// });
 
-app.post("/api/auth/register", async (req: Request, res: Response) => {
-  await handleAuthRequest(req, res, "register");
-});
+// app.post("/api/auth/register", async (req: Request, res: Response) => {
+//   await handleAuthRequest(req, res, "register");
+// });
 
-app.post("/api/auth/refresh-token", async (req: Request, res: Response) => {
-  await handleAuthRequest(req, res, "refresh-token");
-});
+// app.post("/api/auth/refresh-token", async (req: Request, res: Response) => {
+//   await handleAuthRequest(req, res, "refresh-token");
+// });
 
-app.post("/api/auth/verify-token", async (req: Request, res: Response) => {
-  await handleAuthRequest(req, res, "verify-token");
-});
+// app.post("/api/auth/verify-token", async (req: Request, res: Response) => {
+//   await handleAuthRequest(req, res, "verify-token");
+// });
 
-app.post("/api/auth/logout", async (req: Request, res: Response) => {
-  await handleAuthRequest(req, res, "logout");
-});
+// app.post("/api/auth/logout", async (req: Request, res: Response) => {
+//   await handleAuthRequest(req, res, "logout");
+// });
 
-app.post("/api/auth/logout-all", async (req: Request, res: Response) => {
-  await handleAuthRequest(req, res, "logout-all");
-});
+// app.post("/api/auth/logout-all", async (req: Request, res: Response) => {
+//   await handleAuthRequest(req, res, "logout-all");
+// });
 
 // =====================================================
 // CONFIGURE PROXIES FOR EACH MICROSERVICE
