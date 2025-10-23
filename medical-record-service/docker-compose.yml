@@ -1,0 +1,38 @@
+version: '3.9'
+
+services:
+  medical-record-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: medical-record-service
+    ports:
+      - "3004:3004"
+    env_file:
+      - .env.development
+    volumes:
+      - ./src:/app/src
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+    depends_on:
+      - mongodb
+    networks:
+      - healthbridge-net
+    restart: unless-stopped
+
+  mongodb:
+    image: mongo:6
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - healthbridge-net
+
+networks:
+  healthbridge-net:
+    driver: bridge
+
+volumes:
+  mongo-data:
