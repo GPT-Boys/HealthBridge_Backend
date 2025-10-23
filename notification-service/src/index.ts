@@ -2,23 +2,21 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import nodemailer from 'nodemailer';
 import twilio from 'twilio';
 import amqp from 'amqplib';
 import cron from 'node-cron';
-
-dotenv.config();
+import ENV from './config/env.js';
 
 const app = express();
-const PORT = process.env.PORT || 3005;
+const PORT = ENV.PORT || 3005;
 
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
 // ✅ Conexión a MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/healthbridge-notifications')
+mongoose.connect(ENV.MONGODB_URI)
   .then(() => console.log('✅ Conectado a MongoDB - Notification Service'))
   .catch(err => console.error('❌ Error conectando a MongoDB:', err));
 
@@ -26,15 +24,15 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/healthbri
 const emailTransporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD
+    user: ENV.EMAIL_USER,
+    pass: ENV.EMAIL_PASSWORD
   }
 });
 
 // ✅ Configuración de Twilio
 const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
+  ENV.TWILIO_ACCOUNT_SID,
+  ENV.TWILIO_AUTH_TOKEN
 );
 
 let rabbitmqChannel: amqp.Channel;
@@ -42,7 +40,7 @@ let rabbitmqChannel: amqp.Channel;
 // ✅ Conexión a RabbitMQ
 async function connectRabbitMQ() {
   try {
-    const connection = await amqp.connect(process.env.RABBITMQ_URL || 'amqp://localhost');
+    const connection = await amqp.connect(ENV.RABBITMQ_URL || 'amqp://localhost');
     rabbitmqChannel = await connection.createChannel();
 
     await rabbitmqChannel.assertQueue('email_notifications', { durable: true });
@@ -85,7 +83,7 @@ const Notification = mongoose.model('Notification', notificationSchema);
 // ✅ Middleware interno
 const authMiddleware = (req: any, res: any, next: any) => {
   const internalKey = req.headers['x-internal-key'];
-  if (internalKey === process.env.INTERNAL_API_KEY) {
+  if (internalKey === ENV.INTERNAL_API_KEY) {
     req.user = { id: 'system', role: 'system' };
     return next();
   }

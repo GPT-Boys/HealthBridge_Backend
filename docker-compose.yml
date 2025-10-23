@@ -133,6 +133,25 @@ services:
       - healthbridge-net
 
   # -------------------------------------------
+  # Medical Record Service
+  # -------------------------------------------
+  medical-record-service:
+    build: ./medical-record-service
+    container_name: medical-record-service
+    ports:
+      - "3004:3004"
+    env_file:
+      - ./medical-record-service/.env.development
+    volumes:
+      - ./medical-record-service/uploads:/app/uploads
+      - ./medical-record-service/logs:/app/logs
+    depends_on:
+      - mongodb
+      - auth-service
+    networks:
+      - healthbridge-net
+
+  # -------------------------------------------
   # Notification Service
   # -------------------------------------------
   notification-service:
