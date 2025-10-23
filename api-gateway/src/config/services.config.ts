@@ -29,7 +29,7 @@ export const services: ServiceConfig[] = [
   {
     name: "appointment",
     url: ENV.APPOINTMENT_SERVICE_URL,
-    path: "/api/appointment",
+    path: "/api/appointments",
     timeout: 10000,
     requiresAuth: true,
     description: "Medical appointments management",
