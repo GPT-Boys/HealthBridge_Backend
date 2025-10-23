@@ -117,7 +117,7 @@ app.get("/health", async (req: Request, res: Response) => {
     res.status(503).json({
       service: "user-service",
       status: "ERROR",
-      error: "Service unavailable",
+      error: `Service unavailable: ${error}`,
     });
   }
 });
