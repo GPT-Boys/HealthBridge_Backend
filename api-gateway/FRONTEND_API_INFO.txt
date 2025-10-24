@@ -1,0 +1,172 @@
+HealthBridge API Gateway - Guía para Frontend
+Fecha: 2025-10-23
+
+Resumen
+- Punto de entrada único del backend.
+- Autenticación centralizada con JWT (header Authorization: Bearer <token>).
+- CORS habilitado y configurable.
+- Rate limiting y trazabilidad con X-Request-Id.
+- Proxy hacia microservicios por prefijos /api/*.
+
+Base URL y puertos (desarrollo)
+- Base URL: http://localhost:3000
+- Se puede cambiar con la variable de entorno PORT en el gateway.
+- Recomendada en frontend como variable:
+  - VITE_API_BASE_URL=http://localhost:3000/api
+
+CORS (lo que el frontend debe saber)
+- Orígenes permitidos: definidos en ALLOWED_ORIGINS (coma-separados). Por defecto incluye http://localhost:5173.
+- credentials: true (se permiten cookies/cabeceras credenciales si se usan).
+- Métodos permitidos: GET, POST, PUT, DELETE, PATCH, OPTIONS.
+- Request headers permitidos: Content-Type, Authorization, X-Requested-With, X-User-Id, X-User-Role, X-Request-Id.
+- Response headers expuestos (se pueden leer en el navegador): X-Total-Count, X-Page-Count, X-Request-Id.
+- Si ves errores CORS en el navegador, agrega el origen del frontend a ALLOWED_ORIGINS en el gateway y reinicia.
+
+Autenticación
+- Tipo: JWT Bearer en header Authorization.
+  - Ejemplo: Authorization: Bearer <tu-token-jwt>
+- Claims esperados en el token (usados por el gateway):
+  - userId (string), email (string), role (string)
+- Rutas públicas (no requieren token):
+  - /api/auth/login
+  - /api/auth/register
+  - /api/auth/refresh-token
+  - /api/auth/verify-token
+  - /api/plans
+  - /health, /metrics, /
+- Todas las demás rutas requieren token válido (401 si falta/expira, 403 si el rol no tiene permiso en endpoints que lo verifiquen en los microservicios).
+
+Prefijos de servicios (usar siempre estos paths desde el frontend)
+- /api/auth            -> Auth Service (público y protegido)
+- /api/user            -> User Service (protegido)
+- /api/appointments    -> Appointment Service (protegido)   [NOTA: es plural "appointments"]
+- /api/medical-record  -> Medical Record Service (protegido)
+- /api/notification    -> Notification Service (protegido)
+- /api/billing         -> Billing Service (protegido)
+- /api/subscription    -> Subscription Service (protegido)
+
+Endpoints propios del Gateway (útiles para diagnósticos)
+- GET /                -> Info del gateway (status, environment, requestId)
+- GET /health          -> Health check del ecosistema (200/207/503)
+- GET /metrics         -> Métricas de proceso del gateway
+- GET /services        -> Lista de servicios y metadatos
+
+Rate limiting
+- General: ventana RATE_LIMIT_WINDOW_MS (default 900000ms = 15 min), máximo RATE_LIMIT_MAX_REQUESTS (default 100) por IP.
+- Autenticación (login/register): 10 intentos por 15 minutos (las solicitudes exitosas no cuentan).
+- Respuesta 429 (ejemplo):
+  {
+    "error": "Demasiadas solicitudes",
+    "message": "Has excedido el límite de solicitudes. Intenta nuevamente más tarde.",
+    "retryAfter": 900,
+    "requestId": "..."
+  }
+
+Tamaño y formato de requests
+- JSON body hasta 10 MB (application/json).
+- URL-encoded soportado (limite 10 MB).
+
+Trazabilidad y headers útiles
+- El gateway asigna y devuelve X-Request-Id en todas las respuestas (útil para depurar y correlacionar).
+- Si el request incluye X-Request-Id, se reutiliza; si no, el gateway genera uno.
+- Los microservicios pueden exponer X-Total-Count y X-Page-Count (paginación). El gateway los expone para que el frontend pueda leerlos.
+
+Modelo de errores (resumen canónico desde el gateway)
+- 401 (falta/invalid token):
+  {
+    "error": "Token no proporcionado" | "Token inválido o expirado",
+    "message": "Se requiere autenticación para acceder a este recurso" | "Por favor inicia sesión nuevamente",
+    "requestId": "..."
+  }
+- 403 (rol sin permiso – si aplica en el microservicio):
+  {
+    "error": "Acceso denegado",
+    "message": "No tienes permisos para acceder a este recurso",
+    "requestId": "..."
+  }
+- 404 (ruta inexistente en el gateway):
+  {
+    "error": "Ruta no encontrada",
+    "path": "/api/...",
+    "method": "GET|POST|...",
+    "message": "El endpoint solicitado no existe",
+    "requestId": "..."
+  }
+- 429 (rate limit): ver ejemplo en sección de rate limiting.
+- 503 (servicio destino caído o timeout del proxy):
+  {
+    "error": "Servicio temporalmente no disponible",
+    "message": "El servicio solicitado no está disponible en este momento",
+    "code": "SERVICE_UNAVAILABLE",
+    "requestId": "..."
+  }
+- 500 (error interno del gateway):
+  {
+    "error": "Error interno del servidor" (en dev puede incluir el mensaje real),
+    "message": "Ha ocurrido un error procesando tu solicitud",
+    "requestId": "...",
+    "stack?": "..." (solo en development)
+  }
+
+Buenas prácticas en el Frontend
+- Configurar un cliente HTTP con baseURL y header Authorization dinámico.
+- Enviar Authorization solo cuando haya token; manejar 401 para refrescar/iniciar sesión.
+- Loggear/mostrar X-Request-Id cuando haya errores para facilitar soporte.
+- Leer X-Total-Count y X-Page-Count para paginación cuando estén presentes.
+- Implementar reintentos limitados (con backoff) en 503 y manejar 429 respetando retryAfter.
+
+Snippet de cliente (axios, ejemplo)
+import axios from "axios";
+
+export const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api",
+  withCredentials: true,
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("access_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  // Propaga un request id opcional propio
+  const reqId = crypto.randomUUID?.() || undefined;
+  if (reqId) config.headers["X-Request-Id"] = reqId;
+  return config;
+});
+
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    const status = err?.response?.status;
+    const requestId = err?.response?.headers?.["x-request-id"];
+    if (status === 401) {
+      // TODO: refrescar token o redirigir a login
+    }
+    if (status === 429) {
+      const retryAfter = err?.response?.data?.retryAfter;
+      // TODO: informar al usuario y respetar retryAfter (segundos)
+    }
+    console.error("API error", { status, requestId, data: err?.response?.data });
+    return Promise.reject(err);
+  }
+);
+
+Notas importantes
+- Diferencia detectada: el README menciona /api/appointment, pero el código del gateway usa /api/appointments (plural). El frontend debe usar /api/appointments.
+- El gateway elimina el prefijo (/api/<servicio>) al reenviar al microservicio; esto no afecta al frontend.
+- El gateway añade headers X-User-Id, X-User-Email, X-User-Role hacia los microservicios una vez verificado el token.
+
+Variables de entorno de referencia (desarrollo)
+PORT=3000
+ALLOWED_ORIGINS=http://localhost:5173
+AUTH_SERVICE_URL=http://localhost:3001
+USER_SERVICE_URL=http://localhost:3002
+APPOINTMENT_SERVICE_URL=http://localhost:3003
+MEDICAL_RECORD_SERVICE_URL=http://localhost:3004
+NOTIFICATION_SERVICE_URL=http://localhost:3005
+BILLING_SERVICE_URL=http://localhost:3006
+SUBSCRIPTION_SERVICE_URL=http://localhost:3007
+
+Contacto y diagnóstico
+- Para diagnosticar, usar /health y /services.
+- Siempre incluye el X-Request-Id al reportar un problema.

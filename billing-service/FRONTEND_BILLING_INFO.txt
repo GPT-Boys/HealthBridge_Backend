@@ -1,0 +1,391 @@
+═══════════════════════════════════════════════════════════════════════════════
+                     HEALTHBRIDGE BILLING SERVICE
+                        GUÍA PARA INTEGRACIÓN FRONTEND
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 ÍNDICE
+─────────────────────────────────────────────────────────────────────────────
+1. INFORMACIÓN GENERAL
+2. AUTENTICACIÓN, CORS Y RATE LIMITING
+3. MODELOS Y ESTADOS (RESUMEN)
+4. ENDPOINTS - FACTURAS (Invoices)
+5. ENDPOINTS - PAGOS (Payments)
+6. ENDPOINTS - REPORTES (Reports)
+7. WEBHOOKS (Stripe)
+8. EJEMPLOS CON AXIOS + Stripe.js
+9. MANEJO DE ERRORES (Patrones)
+10. NOTAS Y BUENAS PRÁCTICAS
+
+
+═══════════════════════════════════════════════════════════════════════════════
+1. INFORMACIÓN GENERAL
+═══════════════════════════════════════════════════════════════════════════════
+
+🔗 URLs BASE:
+─────────────────────────────────────────────────────────────────────────────
+• Gateway (recomendado): http://localhost:3000/api/billing
+• Servicio directo (dev): http://localhost:3006
+
+🗄️ BASE DE DATOS Y COLECCIONES:
+─────────────────────────────────────────────────────────────────────────────
+• MongoDB: healthbridge_billing
+• Colecciones: invoices, payments, transactions
+
+🔌 Servicios relacionados:
+─────────────────────────────────────────────────────────────────────────────
+• User Service (datos de usuario/paciente/doctor)
+• Appointment Service (generar factura desde cita completada)
+• Notification Service (envío de factura por email)
+• Stripe (procesamiento de pagos con tarjeta)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+2. AUTENTICACIÓN, CORS Y RATE LIMITING
+═══════════════════════════════════════════════════════════════════════════════
+
+🔒 Autenticación (JWT):
+─────────────────────────────────────────────────────────────────────────────
+• Header: Authorization: Bearer <access_token>
+• Payload esperado: { userId, email, role: 'admin' | 'doctor' | 'patient' }
+• Roles por recurso:
+  - Facturas: ver (admin/doctor/patient limitado a lo propio), crear/emitir/editar (admin/doctor)
+  - Pagos: crear manual (admin/doctor), pagar con Stripe (admin/doctor/patient), reembolsos (admin)
+  - Reportes: financieros (admin), por doctor (admin/doctor), por paciente (admin/doctor/patient)
+
+🌐 CORS:
+─────────────────────────────────────────────────────────────────────────────
+• Orígenes permitidos (por defecto): http://localhost:5173, http://localhost:3000, http://localhost:8080
+• Headers: Content-Type, Authorization
+
+⏱️ Rate limiting:
+─────────────────────────────────────────────────────────────────────────────
+• 100 solicitudes cada 15 minutos por IP (vía gateway/servicio)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+3. MODELOS Y ESTADOS (RESUMEN)
+═══════════════════════════════════════════════════════════════════════════════
+
+🧾 Invoice (Factura):
+─────────────────────────────────────────────────────────────────────────────
+• Campos clave: invoiceNumber, patientId, doctorId, items[{ description, quantity, unitPrice }],
+  subtotal, discountPercentage, insuranceInfo?, totalAmount, amountPaid, amountDue,
+  status, issueDate, dueDate
+• Estados: draft | issued | paid | partially_paid | overdue | cancelled | refunded
+• Reglas:
+  - Calculo de totales automático (pre-save)
+  - Solo se puede actualizar en draft
+  - issue -> emite factura; cancel -> no permitido si paid/refunded
+
+💰 Payment (Pago):
+─────────────────────────────────────────────────────────────────────────────
+• Campos clave: invoiceId, amount, currency, paymentMethod(stripe|cash|bank_transfer|qr),
+  status, paymentDetails (Stripe IDs, etc.), refunds[]
+• Estados: pending | processing | completed | failed | refunded | partially_refunded
+• Reglas:
+  - Reembolsos: parciales o totales, cambian refundedAmount y status
+
+📒 Transaction (Transacción - auditoría):
+─────────────────────────────────────────────────────────────────────────────
+• Tipos: payment | refund | adjustment | fee | discount
+• Propósito: trazabilidad financiera (monto, referencia, quién creó)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+4. ENDPOINTS - FACTURAS (Invoices)
+═══════════════════════════════════════════════════════════════════════════════
+
+Base: /api/billing/invoices (Gateway)  |  /api/invoices (Servicio directo)
+
+─ Crear factura
+POST /api/billing/invoices
+Roles: admin, doctor
+Headers: Authorization: Bearer <token>
+Body JSON:
+{
+  "patientId": "<mongoId>",
+  "doctorId": "<mongoId>",          // opcional
+  "facilityId": "<mongoId>",        // opcional
+  "items": [
+    { "description": "Consulta", "quantity": 1, "unitPrice": 120 }
+  ],
+  "discountPercentage": 0,           // opcional [0-100]
+  "hasInsurance": false,
+  "insuranceInfo": {                 // opcional
+    "provider": "SeguroX",
+    "policyNumber": "ABC-123",
+    "coveragePercentage": 70
+  },
+  "notes": "..."                    // opcional
+}
+200/201 Response:
+{ success: true, message, data: { ...invoice } }
+
+─ Crear factura desde cita
+POST /api/billing/invoices/appointment/:appointmentId
+Roles: admin, doctor
+Headers: Authorization: Bearer <token>
+Params: appointmentId (mongoId) – la cita debe estar status=completed
+201 Response: { success: true, data: { ...invoice } }
+
+─ Listar facturas (filtros y paginación)
+GET /api/billing/invoices?patientId=&doctorId=&status=&dateFrom=&dateTo=&page=1&limit=10
+Roles: cualquier autenticado
+200 Response:
+{ success: true, data: [ ...invoices ], pagination: { total, page, totalPages } }
+
+─ Obtener factura por ID
+GET /api/billing/invoices/:id
+Roles: cualquier autenticado
+200 Response: { success: true, data: { ...invoice } }
+404: Factura no encontrada
+
+─ Emitir factura (draft -> issued)
+PUT /api/billing/invoices/:id/issue
+Roles: admin, doctor
+200 Response: { success: true, message, data: { ...invoice } }
+
+─ Actualizar factura (solo draft)
+PUT /api/billing/invoices/:id
+Roles: admin, doctor
+Body: Campos permitidos (items, discountPercentage, notes, dueDate)
+200 Response: { success: true, message, data: { ...invoice } }
+
+─ Cancelar factura
+DELETE /api/billing/invoices/:id
+Roles: admin
+Body opcional: { "reason": "..." }
+200 Response: { success: true, message, data: { ...invoice } }
+
+─ Descargar PDF
+GET /api/billing/invoices/:id/pdf
+Roles: cualquier autenticado
+Response: application/pdf (content-disposition: attachment)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+5. ENDPOINTS - PAGOS (Payments)
+═══════════════════════════════════════════════════════════════════════════════
+
+Base: /api/billing/payments (Gateway)  |  /api/payments (Servicio directo)
+
+─ Crear pago MANUAL (efectivo/transferencia/QR)
+POST /api/billing/payments/invoice/:invoiceId/manual
+Roles: admin, doctor
+Body JSON:
+{
+  "amount": 100,
+  "paymentMethod": "cash",    // cash | bank_transfer | qr
+  "paymentDetails": { ... },   // opcional
+  "notes": "..."               // opcional
+}
+201 Response: { success: true, data: { ...payment } }
+400: Monto inválido | Método no permitido | Excede saldo
+
+─ Pagar con STRIPE (tarjeta)
+POST /api/billing/payments/invoice/:invoiceId/stripe
+Roles: admin, doctor, patient
+Body JSON:
+{
+  "paymentMethodId": "pm_..."   // obtenido desde Stripe.js
+}
+201 Response: { success: true, data: { ...payment } }
+Errores comunes: 404 (Factura no encontrada), 400 (Factura ya pagada), 402 (pago rechazado)
+
+─ Reembolsar pago
+POST /api/billing/payments/:paymentId/refund
+Roles: admin
+Body JSON:
+{
+  "amount": 50,                 // opcional; por defecto total disponible
+  "reason": "servicio no prestado"
+}
+200 Response: { success: true, data: { ...refund | payment } }
+
+─ Listar pagos
+GET /api/billing/payments?invoiceId=&patientId=&status=&dateFrom=&dateTo=&page=&limit=
+Roles: admin, doctor
+200 Response: { success: true, data: [ ...payments ], pagination: { ... } }
+
+─ Obtener pago por ID
+GET /api/billing/payments/:id
+Roles: admin, doctor, patient (acceso restringido a propios)
+200 Response: { success: true, data: { ...payment } }
+
+
+═══════════════════════════════════════════════════════════════════════════════
+6. ENDPOINTS - REPORTES (Reports)
+═══════════════════════════════════════════════════════════════════════════════
+
+Base: /api/billing/reports (Gateway)  |  /api/reports (Servicio directo)
+
+─ Reporte financiero general
+GET /api/billing/reports/financial?dateFrom=YYYY-MM-DD&dateTo=YYYY-MM-DD&doctorId=&facilityId=&groupBy=day|week|month
+Roles: admin
+200 Response: {
+  success: true,
+  data: {
+    totalFacturado, totalPagado, totalPendiente, cantidadFacturas
+  }
+}
+
+─ Ingresos por doctor
+GET /api/billing/reports/doctor/:doctorId?dateFrom=&dateTo=
+Roles: admin, doctor
+
+─ Historial por paciente
+GET /api/billing/reports/patient/:patientId?dateFrom=&dateTo=
+Roles: admin, doctor, patient (acceso restringido)
+
+─ Cuentas por cobrar (pendientes/vencidas)
+GET /api/billing/reports/pending
+Roles: admin, doctor
+
+
+═══════════════════════════════════════════════════════════════════════════════
+7. WEBHOOKS (Stripe)
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️ Solo para Stripe. No llamar desde el frontend.
+
+Ruta (servicio directo):
+POST http://localhost:3006/webhooks/stripe
+
+Ruta vía gateway (si es necesario):
+POST http://localhost:3000/api/billing/webhooks/stripe
+
+Headers:
+• stripe-signature: <firma_proporcionada_por_stripe>
+Body: application/json (raw) – el servidor ya espera raw body en esta ruta
+
+Eventos manejados:
+• payment_intent.succeeded
+• payment_intent.payment_failed
+• charge.refunded
+
+
+═══════════════════════════════════════════════════════════════════════════════
+8. EJEMPLOS CON AXIOS + Stripe.js
+═══════════════════════════════════════════════════════════════════════════════
+
+Setup de clientes:
+─────────────────────────────────────────────────────────────────────────────
+// src/api/billing.ts
+import axios from 'axios';
+
+const API = 'http://localhost:3000/api/billing';
+
+const billing = axios.create({ baseURL: API });
+
+billing.interceptors.request.use((config) => {
+  const token = localStorage.getItem('accessToken');
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+export default billing;
+
+
+A) Crear factura (admin/doctor):
+─────────────────────────────────────────────────────────────────────────────
+import billing from '@/api/billing';
+
+export async function createInvoice(payload) {
+  const { data } = await billing.post('/invoices', payload);
+  return data.data; // invoice
+}
+
+
+B) Descargar PDF de factura:
+─────────────────────────────────────────────────────────────────────────────
+export async function downloadInvoicePDF(id) {
+  const res = await billing.get(`/invoices/${id}/pdf`, { responseType: 'blob' });
+  const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = `factura-${id}.pdf`; a.click();
+  window.URL.revokeObjectURL(url);
+}
+
+
+C) Pagar con Stripe (Stripe.js + paymentMethodId):
+─────────────────────────────────────────────────────────────────────────────
+// 1) En el frontend ya inicializaste Stripe.js y obtuviste paymentMethodId
+// 2) Llamas al backend para procesar el pago completo del saldo de la factura
+export async function payInvoiceWithStripe(invoiceId, paymentMethodId) {
+  const { data } = await billing.post(`/payments/invoice/${invoiceId}/stripe`, { paymentMethodId });
+  return data.data; // payment
+}
+
+
+D) Pago manual (efectivo/transferencia/QR):
+─────────────────────────────────────────────────────────────────────────────
+export async function payInvoiceManual(invoiceId, payload) {
+  // payload: { amount, paymentMethod: 'cash'|'bank_transfer'|'qr', paymentDetails?, notes? }
+  const { data } = await billing.post(`/payments/invoice/${invoiceId}/manual`, payload);
+  return data.data; // payment
+}
+
+
+E) Reembolso (admin):
+─────────────────────────────────────────────────────────────────────────────
+export async function refundPayment(paymentId, { amount, reason }) {
+  const { data } = await billing.post(`/payments/${paymentId}/refund`, { amount, reason });
+  return data.data; // refund o payment
+}
+
+
+F) Listar facturas/pagos con filtros:
+─────────────────────────────────────────────────────────────────────────────
+export async function listInvoices(params) {
+  const { data } = await billing.get('/invoices', { params });
+  return data; // { success, data, pagination }
+}
+
+export async function listPayments(params) {
+  const { data } = await billing.get('/payments', { params });
+  return data; // { success, data, pagination }
+}
+
+
+═══════════════════════════════════════════════════════════════════════════════
+9. MANEJO DE ERRORES (Patrones)
+═══════════════════════════════════════════════════════════════════════════════
+
+Códigos frecuentes:
+• 400: Datos inválidos (validaciones express-validator)
+• 401: No autenticado (Bearer faltante/expirado)
+• 403: Sin permisos (rol insuficiente)
+• 404: No encontrado (factura/pago)
+• 409: Conflicto (ya pagado, etc.)
+• 422: Entidad no procesable (webhook / stripe errors)
+• 500: Error interno
+
+Estructura común:
+{ success: false, message: "Descripción del error" }
+
+Recomendaciones frontend:
+• Interceptor global: si 401 => limpiar token y redirigir a /login
+• Si 403 => mostrar aviso de permisos
+• Validar inputs antes de enviar (mismas reglas que backend)
+• Mostrar mensajes de Stripe al usuario si el pago falla
+
+
+═══════════════════════════════════════════════════════════════════════════════
+10. NOTAS Y BUENAS PRÁCTICAS
+═══════════════════════════════════════════════════════════════════════════════
+
+• Siempre usar el Gateway en frontend: http://localhost:3000/api/billing
+• Para Stripe, obtén paymentMethodId con Stripe.js (no envíes datos de tarjeta al backend)
+• PDF: usa responseType: 'blob' y descarga con un anchor temporal
+• Paginación: limita a 100 por página como máximo
+• Estados de factura se derivan de pagos (amountPaid vs totalAmount)
+• Para citas: usa "Crear factura desde cita" al completar una cita
+• Los reportes requieren rangos de fechas válidos (ISO 8601)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                              FIN DEL DOCUMENTO
+═══════════════════════════════════════════════════════════════════════════════
+
+Guía completa para integrar el módulo de Facturación y Pagos en el frontend.
+Ante dudas, revisa README.md del billing-service y los logs en /logs.

@@ -1,0 +1,269 @@
+HealthBridge Appointment Service - Guía para Frontend
+Fecha: 2025-10-23
+
+Resumen
+- Servicio de gestión completa de citas médicas (scheduling, reschedule, cancel, confirm).
+- Soporte citas virtuales y presenciales, múltiples tipos, recordatorios automáticos.
+- Endpoints públicos: consultar disponibilidad (slots).
+- Endpoints protegidos: CRUD citas, estadísticas, según rol (patient/doctor/admin).
+- Recomendación: consumir vía API Gateway.
+
+Base URLs
+- Vía API Gateway (RECOMENDADO): http://localhost:3000/api/appointments
+- Directo al servicio (desarrollo): http://localhost:3003/api/appointments
+- Variable sugerida en frontend:
+  - VITE_APPOINTMENT_BASE_URL=http://localhost:3000/api/appointments
+
+CORS y Seguridad
+- Orígenes: ALLOWED_ORIGINS (por defecto http://localhost:5173,http://localhost:3000).
+- Rate limiting: 100 req/15min por IP (429 con mensaje).
+- Autenticación: Authorization: Bearer <access_token> para rutas protegidas.
+
+Prefijo correcto vía Gateway
+- El gateway mapea /api/appointments -> appointment-service (/api/appointments).
+- El frontend debe usar siempre /api/appointments/*.
+
+Estados de citas
+- scheduled: programada
+- confirmed: confirmada (por doctor/admin)
+- in_progress: en curso
+- completed: completada
+- cancelled: cancelada
+- no_show: paciente no se presentó
+- rescheduled: reagendada
+
+Tipos de cita
+- consultation: consulta
+- follow_up: seguimiento
+- checkup: chequeo
+- emergency: emergencia
+- teleconsultation: teleconsulta
+- vaccination: vacunación
+- surgery: cirugía
+- therapy: terapia
+
+Contratos de Endpoints
+
+Público (sin token)
+1) GET /slots/available
+Query params:
+- doctorId (ObjectId, requerido)
+- date (YYYY-MM-DD, requerido)
+- duration (number en minutos, default 30)
+Respuesta 200:
+{
+  "availableSlots": [ { start: "09:00", end: "09:30", available: true }, ... ],
+  "doctorId": "...",
+  "date": "2024-12-15"
+}
+Errores: 400 { error: "Datos de entrada inválidos", details: [...] } | 500 { error }
+
+Protegidos (requieren token)
+2) POST / (crear cita)
+Headers: Authorization: Bearer <token>
+Roles: patient, doctor, admin
+Body JSON (ejemplo):
+{
+  "patientId": "674d...",
+  "doctorId": "674d...",
+  "appointmentDate": "2024-12-15",
+  "startTime": "2024-12-15T10:00:00.000Z",
+  "duration": 30,
+  "reason": "Consulta general",
+  "specialization": "Medicina General",
+  "baseFee": 150,
+  "isVirtual": false,
+  "type": "consultation",
+  "insuranceCovered": false,
+  "requiresPreparation": false
+}
+Respuesta 201:
+{
+  "message": "Cita creada exitosamente",
+  "appointment": { ...fullAppointment }
+}
+Errores:
+- 400: { error: "Datos de entrada inválidos", details: [...] }
+- 401: { error: "Usuario no autenticado" }
+- 409: { error: "El doctor ya tiene una cita programada en ese horario" }
+- 500: { error: "Error interno del servidor" }
+
+3) GET / (listar citas con filtros)
+Headers: Authorization: Bearer <token>
+Query params:
+- patientId, doctorId, facilityId, status (single o array), dateFrom, dateTo, specialization, type, isVirtual
+- page (default 1), limit (default 10), sortBy (default appointmentDate), sortOrder (asc|desc)
+Respuesta 200:
+{
+  "message": "Citas obtenidas exitosamente",
+  "appointments": [ {...}, {...} ],
+  "pagination": { total, page, limit, pages }
+}
+Errores: 500 { error }
+
+4) GET /stats
+Headers: Authorization: Bearer <token>
+Roles: doctor (sus citas), admin (todas)
+Respuesta 200:
+{
+  "totalAppointments": number,
+  "byStatus": { scheduled: x, confirmed: y, ... },
+  "byType": { consultation: x, follow_up: y, ... },
+  "upcomingAppointments": number,
+  "completedAppointments": number,
+  "cancelledAppointments": number
+}
+Errores: 401/403/500
+
+5) GET /:id
+Headers: Authorization: Bearer <token>
+Roles: propietarios (patient/doctor) + admin
+Respuesta 200:
+{
+  "message": "Cita obtenida exitosamente",
+  "appointment": { ...fullAppointment }
+}
+Errores: 400 { error: "ID de cita requerido" } | 404 { error: "Cita no encontrada" } | 500
+
+6) PUT /:id (actualizar cita)
+Headers: Authorization: Bearer <token>
+Roles: patient, doctor, admin (con restricciones de propiedad)
+Body JSON: campos permitidos (notes, baseFee, etc.; status no se cambia por aquí)
+Respuesta 200:
+{
+  "message": "Cita actualizada exitosamente",
+  "appointment": { ...updated }
+}
+Errores: 400/401/404/500
+
+7) POST /:id/cancel
+Headers: Authorization: Bearer <token>
+Roles: patient, doctor, admin
+Body JSON:
+{
+  "cancellationReason": "Motivo de cancelación"
+}
+Respuesta 200:
+{
+  "message": "Cita cancelada exitosamente",
+  "appointment": { ...cancelled }
+}
+Errores: 400/401/404/500
+
+8) POST /:id/reschedule
+Headers: Authorization: Bearer <token>
+Roles: patient, doctor, admin
+Body JSON:
+{
+  "newAppointmentDate": "2024-12-20",
+  "newStartTime": "2024-12-20T14:00:00.000Z",
+  "reschedulingReason": "Motivo"
+}
+Respuesta 200:
+{
+  "message": "Cita reagendada exitosamente",
+  "appointment": { ...rescheduled }
+}
+Errores: 400/401/404/500
+
+9) POST /:id/confirm (confirmar cita)
+Headers: Authorization: Bearer <token>
+Roles: doctor, admin
+Respuesta 200:
+{
+  "message": "Cita confirmada exitosamente",
+  "appointment": { ...confirmed (status=confirmed) }
+}
+Errores: 400/401/403/404/500
+
+Modelo de datos (IAppointment resumen)
+{
+  patientId, doctorId, facilityId,
+  appointmentDate, startTime, endTime, duration,
+  type, status, reason, notes,
+  specialization, department, room,
+  isVirtual, meetingLink, requiresPreparation, preparationInstructions,
+  baseFee, insuranceCovered, insuranceProvider, finalCost,
+  remindersSent: [ { type, sentAt, status } ],
+  createdBy, cancelledBy, cancelledAt, cancellationReason,
+  originalAppointmentId, rescheduledFrom, rescheduledTo, reschedulingReason,
+  createdAt, updatedAt
+}
+
+Paginación
+- Objeto pagination en body: { total, page, limit, pages }
+
+Control de acceso
+- patient: crear, listar sus citas, actualizar/cancelar/reagendar sus propias citas
+- doctor: crear, listar sus citas, actualizar/cancelar/reagendar/confirmar sus citas, ver stats
+- admin: acceso completo (todas las citas, stats globales)
+
+Buenas prácticas Frontend
+- Usar gateway: baseURL http://localhost:3000/api/appointments
+- Incluir Authorization dinámicamente.
+- Para agendar, primero consultar /slots/available.
+- Listar con filtros: patientId/doctorId según rol (patient ve sus citas, doctor ve sus pacientes).
+- Formatear fechas ISO 8601 (startTime, appointmentDate).
+- Manejar 409 cuando hay conflicto de horarios.
+- Permitir cancelación/reagendamiento solo si la cita no está completed/cancelled.
+
+Snippet cliente (axios)
+import axios from "axios";
+
+export const appointments = axios.create({
+  baseURL: import.meta.env.VITE_APPOINTMENT_BASE_URL || "http://localhost:3000/api/appointments",
+});
+
+export async function getAvailableSlots(doctorId, date, duration = 30) {
+  const { data } = await appointments.get("/slots/available", { params: { doctorId, date, duration } });
+  return data; // { availableSlots, doctorId, date }
+}
+
+export async function createAppointment(token, payload) {
+  const { data } = await appointments.post("/", payload, { headers: { Authorization: `Bearer ${token}` } });
+  return data; // { message, appointment }
+}
+
+export async function getAppointments(token, params) {
+  const { data } = await appointments.get("/", { params, headers: { Authorization: `Bearer ${token}` } });
+  return data; // { message, appointments, pagination }
+}
+
+export async function getAppointment(token, id) {
+  const { data } = await appointments.get(`/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+  return data; // { message, appointment }
+}
+
+export async function cancelAppointment(token, id, reason) {
+  const { data } = await appointments.post(`/${id}/cancel`, { cancellationReason: reason }, { headers: { Authorization: `Bearer ${token}` } });
+  return data;
+}
+
+export async function rescheduleAppointment(token, id, newDate, newTime, reason) {
+  const { data } = await appointments.post(`/${id}/reschedule`, { newAppointmentDate: newDate, newStartTime: newTime, reschedulingReason: reason }, { headers: { Authorization: `Bearer ${token}` } });
+  return data;
+}
+
+export async function confirmAppointment(token, id) {
+  const { data } = await appointments.post(`/${id}/confirm`, {}, { headers: { Authorization: `Bearer ${token}` } });
+  return data;
+}
+
+Notas importantes
+- El servicio incluye ReminderService (cron) que envía notificaciones automáticas.
+- Para citas virtuales (isVirtual=true), el backend genera meetingLink si aplica (o frontend puede enviarlo).
+- La cancelación de cita requiere cancellationReason.
+- Reagendar valida disponibilidad del nuevo slot automáticamente.
+- El servicio integra con user-service para validar doctor/patient y con notification-service para recordatorios.
+- Si el slot ya está ocupado, se devuelve 409 con mensaje claro.
+- Para desarrollo sin gateway, usa http://localhost:3003/api/appointments y actualiza ALLOWED_ORIGINS.
+
+Variables de entorno (referencia)
+- PORT (default 3003)
+- MONGODB_URI
+- JWT_SECRET
+- AUTH_SERVICE_URL, USER_SERVICE_URL, NOTIFICATION_SERVICE_URL
+- RATE_LIMIT_WINDOW (default 900000), RATE_LIMIT_MAX_REQUESTS (default 100)
+- DEFAULT_APPOINTMENT_DURATION (30 min), MAX_APPOINTMENTS_PER_DAY (20)
+- APPOINTMENT_REMINDER_HOURS (24,2 - horas antes)
+- ALLOWED_ORIGINS, LOG_LEVEL

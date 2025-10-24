@@ -1,0 +1,388 @@
+HealthBridge Medical Record Service - Guía para Frontend
+Fecha: 2025-10-23
+
+Resumen
+- Servicio de gestión de historiales médicos, prescripciones y archivos adjuntos.
+- Historiales: motivo de consulta, signos vitales, diagnósticos CIE-10, tratamiento, medicamentos, laboratorios, seguimiento.
+- Prescripciones: medicamentos con dosis, frecuencia, duración, firma digital, estados, renovaciones.
+- Archivos: upload/download de documentos (PDF, imágenes, DICOM), categorización, límites de almacenamiento.
+- Seguridad: JWT, control por roles (admin/doctor/patient), auditoría de accesos.
+- Recomendación: consumir vía API Gateway.
+
+Base URLs
+- Vía API Gateway (RECOMENDADO): http://localhost:3000/api/medical-record
+- Directo al servicio (desarrollo): http://localhost:3004/api/records (registros), http://localhost:3004/api/prescriptions (prescripciones)
+- Variables sugeridas:
+  - VITE_MEDICAL_RECORD_BASE_URL=http://localhost:3000/api/medical-record
+
+CORS y Seguridad
+- Orígenes: ALLOWED_ORIGINS (por defecto http://localhost:5173,http://localhost:3000).
+- Rate limiting: 100 req/15min por IP (429 con mensaje).
+- Autenticación: Authorization: Bearer <access_token> para TODAS las rutas (excepto /, /health, /api/info).
+
+Prefijo correcto vía Gateway
+- El gateway mapea /api/medical-record -> medical-record-service (/api/records, /api/prescriptions).
+- Frontend debe usar siempre /api/medical-record/*.
+
+Tipos de registro (type)
+- consultation: consulta
+- diagnosis: diagnóstico
+- treatment: tratamiento
+- test_result: resultado de pruebas
+- surgery: cirugía
+- emergency: emergencia
+- other: otro
+
+Tipos de diagnóstico
+- principal: principal
+- secondary: secundario
+- differential: diferencial
+
+Estados de pruebas de laboratorio (lab tests)
+- ordered: ordenado
+- pending: pendiente
+- completed: completado
+
+Rutas de medicación (route)
+- oral, intravenous, intramuscular, topical, subcutaneous, other
+
+Estados de prescripción
+- active: activa
+- completed: completada
+- cancelled: cancelada
+- expired: expirada
+
+Categorías de archivos adjuntos
+- lab_result: resultado de laboratorio
+- imaging: imagen médica (rayos X, resonancia)
+- prescription: prescripción
+- report: reporte médico
+- consent: consentimiento
+- insurance: seguro
+- other: otro
+
+Contratos de Endpoints
+
+Medical Records
+1) POST /api/records (crear registro médico)
+Headers: Authorization: Bearer <token>
+Roles: doctor, admin
+Body JSON (ejemplo completo):
+{
+  "patientId": "674d...",
+  "doctorId": "674d...",
+  "appointmentId": "674d...",
+  "type": "consultation",
+  "chiefComplaint": "Dolor de cabeza persistente",
+  "presentIllness": "Paciente refiere dolor de cabeza de 3 días de evolución",
+  "vitals": {
+    "bloodPressure": "120/80",
+    "heartRate": 75,
+    "temperature": 36.5,
+    "respiratoryRate": 18,
+    "oxygenSaturation": 98,
+    "weight": 70,
+    "height": 170,
+    "bmi": 24.2
+  },
+  "physicalExam": "Examen físico dentro de parámetros normales",
+  "diagnoses": [
+    { "code": "R51", "description": "Cefalea", "type": "principal" },
+    { "code": "R53", "description": "Fatiga", "type": "secondary" }
+  ],
+  "treatment": "Reposo y analgésicos",
+  "medications": ["Paracetamol 500mg cada 8 horas por 3 días"],
+  "procedures": ["Examen neurológico"],
+  "labTests": [
+    { "test": "Hemograma completo", "status": "ordered" }
+  ],
+  "notes": "Notas adicionales",
+  "followUp": {
+    "required": true,
+    "date": "2025-11-01",
+    "notes": "Control en una semana si persisten los síntomas"
+  },
+  "isPrivate": false
+}
+Respuesta 201:
+{
+  "message": "Registro médico creado exitosamente",
+  "record": { ...fullRecord }
+}
+Errores: 400/401/403/500
+
+2) GET /api/records/patient/:patientId (obtener registros de paciente)
+Headers: Authorization: Bearer <token>
+Roles: doctor (sus pacientes), patient (sí mismo), admin
+Query params:
+- type, dateFrom, dateTo, page (default 1), limit (default 10)
+Respuesta 200:
+{
+  "message": "Registros obtenidos exitosamente",
+  "records": [ {...}, {...} ],
+  "pagination": { total, page, limit, pages }
+}
+Errores: 401/403/500
+
+3) GET /api/records/patient/:patientId/stats (estadísticas de paciente)
+Headers: Authorization: Bearer <token>
+Roles: doctor, patient (sí mismo), admin
+Respuesta 200:
+{
+  "totalRecords": number,
+  "recordsByType": { consultation: x, diagnosis: y, ... },
+  "lastVisit": Date,
+  "totalPrescriptions": number,
+  "totalAttachments": number
+}
+Errores: 401/403/500
+
+4) GET /api/records/:id (obtener registro específico)
+Headers: Authorization: Bearer <token>
+Roles: propietarios (patient/doctor) + admin
+Respuesta 200:
+{
+  "message": "Registro obtenido exitosamente",
+  "record": { ...fullRecord }
+}
+Errores: 401/403/404/500
+
+5) PUT /api/records/:id (actualizar registro)
+Headers: Authorization: Bearer <token>
+Roles: doctor, admin
+Body JSON: campos permitidos (notes, vitals, diagnoses, treatment, medications, procedures, labTests, followUp)
+Respuesta 200:
+{
+  "message": "Registro actualizado exitosamente",
+  "record": { ...updated }
+}
+Errores: 400/401/403/404/500
+
+6) DELETE /api/records/:id (eliminar registro)
+Headers: Authorization: Bearer <token>
+Roles: admin únicamente
+Respuesta 200:
+{
+  "message": "Registro eliminado exitosamente"
+}
+Errores: 401/403/404/500
+
+Archivos (File Attachments)
+7) POST /api/records/:recordId/file (subir archivo)
+Headers: Authorization: Bearer <token>
+Roles: doctor, admin
+Content-Type: multipart/form-data
+Body (FormData):
+- file: archivo (PDF, JPG, JPEG, PNG, DOC, DOCX, DCM)
+- category: 'lab_result' | 'imaging' | 'prescription' | 'report' | 'consent' | 'insurance' | 'other'
+- description: texto opcional
+Límites:
+- MAX_FILE_SIZE: 10 MB (por defecto)
+- MAX_STORAGE_PER_PATIENT: 500 MB (por defecto)
+Respuesta 201:
+{
+  "message": "Archivo subido exitosamente",
+  "file": { id, recordId, patientId, originalName, filename, mimeType, fileSize, category, description, uploadDate }
+}
+Errores: 400/401/403/413 (file too large)/500
+
+8) GET /api/records/:recordId/files (listar archivos de un registro)
+Headers: Authorization: Bearer <token>
+Respuesta 200:
+{
+  "message": "Archivos obtenidos exitosamente",
+  "files": [ {...}, {...} ]
+}
+Errores: 401/403/404/500
+
+9) GET /api/records/file/:fileId/download (descargar archivo)
+Headers: Authorization: Bearer <token>
+Respuesta 200: stream de archivo con headers Content-Type y Content-Disposition
+Errores: 401/403/404/500
+
+10) DELETE /api/records/file/:fileId (eliminar archivo)
+Headers: Authorization: Bearer <token>
+Roles: doctor, admin
+Respuesta 200:
+{
+  "message": "Archivo eliminado exitosamente"
+}
+Errores: 401/403/404/500
+
+Prescripciones (Prescriptions)
+11) POST /api/prescriptions (crear prescripción)
+Headers: Authorization: Bearer <token>
+Roles: doctor, admin
+Body JSON (ejemplo):
+{
+  "patientId": "674d...",
+  "recordId": "674d...",
+  "medications": [
+    {
+      "name": "Amoxicilina",
+      "genericName": "Amoxicilina",
+      "dosage": "500mg",
+      "frequency": "cada 8 horas",
+      "duration": "7 días",
+      "route": "oral",
+      "instructions": "Tomar con alimentos",
+      "quantity": 21
+    }
+  ],
+  "diagnosis": "Infección respiratoria",
+  "notes": "Notas del doctor",
+  "instructions": "Completar el tratamiento aunque se sienta mejor",
+  "validUntil": "2025-11-30",
+  "canRenew": false,
+  "maxRenewals": 0
+}
+Respuesta 201:
+{
+  "message": "Prescripción creada exitosamente",
+  "prescription": { ...fullPrescription }
+}
+Errores: 400/401/403/500
+
+12) GET /api/prescriptions/patient/:patientId (prescripciones de paciente)
+Headers: Authorization: Bearer <token>
+Roles: doctor, patient (sí mismo), admin
+Query params:
+- status ('active' | 'completed' | 'cancelled' | 'expired'), page, limit
+Respuesta 200:
+{
+  "message": "Prescripciones obtenidas exitosamente",
+  "prescriptions": [ {...}, {...} ],
+  "pagination": { total, page, limit, pages }
+}
+Errores: 401/403/500
+
+13) GET /api/prescriptions/:id (obtener prescripción)
+Headers: Authorization: Bearer <token>
+Roles: propietarios (patient/doctor) + admin
+Respuesta 200:
+{
+  "message": "Prescripción obtenida exitosamente",
+  "prescription": { ...fullPrescription }
+}
+Errores: 401/403/404/500
+
+14) PUT /api/prescriptions/:id (actualizar prescripción)
+Headers: Authorization: Bearer <token>
+Roles: doctor, admin
+Body JSON: campos permitidos (medications, notes, instructions, validUntil, canRenew, maxRenewals)
+Respuesta 200:
+{
+  "message": "Prescripción actualizada exitosamente",
+  "prescription": { ...updated }
+}
+Errores: 400/401/403/404/500
+
+15) POST /api/prescriptions/:id/cancel (cancelar prescripción)
+Headers: Authorization: Bearer <token>
+Roles: doctor, admin
+Body JSON (opcional):
+{ "reason": "Motivo de cancelación" }
+Respuesta 200:
+{
+  "message": "Prescripción cancelada exitosamente",
+  "prescription": { ...cancelled (status=cancelled) }
+}
+Errores: 401/403/404/500
+
+Modelos resumidos
+MedicalRecord:
+{
+  patientId, doctorId, appointmentId, date, type, chiefComplaint, presentIllness,
+  vitals: { bloodPressure, heartRate, temperature, respiratoryRate, oxygenSaturation, weight, height, bmi },
+  physicalExam, diagnoses: [ { code, description, type } ],
+  treatment, medications, procedures,
+  labTests: [ { test, result, date, status } ],
+  notes, followUp: { required, date, notes },
+  attachments: [ fileId, ... ], isPrivate,
+  createdAt, updatedAt
+}
+
+Prescription:
+{
+  recordId, patientId, doctorId, date, validUntil,
+  medications: [ { name, genericName, dosage, frequency, duration, route, instructions, quantity } ],
+  diagnosis, notes, instructions, status, canRenew, renewalCount, maxRenewals,
+  doctorSignature: { signed, signedAt, licenseNumber },
+  createdAt, updatedAt
+}
+
+FileAttachment:
+{
+  recordId, patientId, uploadedBy, originalName, filename, filePath, mimeType, fileSize, fileExtension,
+  category, description, uploadDate, isDeleted
+}
+
+Buenas prácticas Frontend
+- Usar gateway: baseURL http://localhost:3000/api/medical-record
+- Incluir Authorization dinámicamente.
+- Para upload, usar FormData con axios/fetch sin Content-Type (se auto-asigna multipart/form-data).
+- Manejar 413 cuando el archivo es muy grande o se excede almacenamiento.
+- Para descargar archivos, usar fetch con .blob() o axios con responseType: 'blob'.
+- Validar códigos CIE-10 cuando sea posible en frontend.
+- Permitir editar solo si el usuario es doctor/admin y el registro no está locked.
+
+Snippet cliente (axios)
+import axios from "axios";
+
+export const medicalRecords = axios.create({
+  baseURL: import.meta.env.VITE_MEDICAL_RECORD_BASE_URL || "http://localhost:3000/api/medical-record",
+});
+
+export async function createRecord(token, payload) {
+  const { data } = await medicalRecords.post("/api/records", payload, { headers: { Authorization: `Bearer ${token}` } });
+  return data;
+}
+
+export async function getPatientRecords(token, patientId, params) {
+  const { data } = await medicalRecords.get(`/api/records/patient/${patientId}`, { params, headers: { Authorization: `Bearer ${token}` } });
+  return data;
+}
+
+export async function uploadFile(token, recordId, file, category, description) {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("category", category);
+  if (description) formData.append("description", description);
+  const { data } = await medicalRecords.post(`/api/records/${recordId}/file`, formData, { headers: { Authorization: `Bearer ${token}` } });
+  return data;
+}
+
+export async function downloadFile(token, fileId) {
+  const response = await medicalRecords.get(`/api/records/file/${fileId}/download`, { headers: { Authorization: `Bearer ${token}` }, responseType: "blob" });
+  return response.data;
+}
+
+export async function createPrescription(token, payload) {
+  const { data } = await medicalRecords.post("/api/prescriptions", payload, { headers: { Authorization: `Bearer ${token}` } });
+  return data;
+}
+
+export async function getPatientPrescriptions(token, patientId, params) {
+  const { data } = await medicalRecords.get(`/api/prescriptions/patient/${patientId}`, { params, headers: { Authorization: `Bearer ${token}` } });
+  return data;
+}
+
+Notas importantes
+- El servicio integra con user-service para validar doctor/patient.
+- Solo doctors/admin pueden crear registros y prescripciones.
+- Patients solo pueden ver sus propios registros y prescripciones.
+- Los archivos se almacenan en el servidor en /uploads (o ruta configurada).
+- El límite de almacenamiento por paciente es de 500 MB por defecto (configurable).
+- Para desarrollo sin gateway, usa http://localhost:3004/api/records y actualiza ALLOWED_ORIGINS.
+- Archivos soportados: PDF, JPG, JPEG, PNG, DOC, DOCX, DCM (configurable).
+
+Variables de entorno (referencia)
+- PORT (default 3004)
+- MONGODB_URI
+- JWT_SECRET, JWT_EXPIRES_IN
+- ALLOWED_ORIGINS
+- RATE_LIMIT_WINDOW (900000), RATE_LIMIT_MAX_REQUESTS (100)
+- MAX_FILE_SIZE (10485760 = 10MB), MAX_STORAGE_PER_PATIENT (524288000 = 500MB)
+- ALLOWED_FILE_TYPES (.pdf,.jpg,.jpeg,.png,.doc,.docx,.dcm)
+- UPLOAD_PATH (./uploads)
+- LOG_LEVEL

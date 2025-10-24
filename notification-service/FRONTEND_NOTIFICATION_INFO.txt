@@ -1,0 +1,152 @@
+HealthBridge Notification Service - Guía para Frontend
+Fecha: 2025-10-23
+
+Resumen
+- Servicio de notificaciones (email, SMS, y notificación in‑app) con colas y plantillas básicas de citas.
+- Eventos soportados: appointment_created, appointment_updated, appointment_cancelled, appointment_reminder.
+- Canales: email, sms, app (y soporte previsto para whatsapp).
+- Seguridad: recomendado vía API Gateway con JWT; para integraciones internas se admite X-Internal-Key.
+- Recomendación: consumir SIEMPRE vía API Gateway.
+
+Base URLs
+- Vía API Gateway (RECOMENDADO): http://localhost:3000/api/notification
+- Directo al servicio (desarrollo): http://localhost:3005
+- Variables sugeridas:
+  - VITE_NOTIFICATION_BASE_URL=http://localhost:3000/api/notification
+
+CORS y Seguridad
+- Orígenes: definidos por gateway (por defecto http://localhost:5173,http://localhost:3000).
+- Rate limiting: 100 req/15min por IP (vía gateway).
+- Autenticación recomendada: Authorization: Bearer <access_token> (el gateway inyecta X-User-Id/X-User-Role).
+- Integraciones internas (backend→backend): header X-Internal-Key=<INTERNAL_API_KEY> (omite JWT).
+
+Prefijo correcto vía Gateway
+- El gateway mapea /api/notification → notification-service (pathRewrite elimina el prefijo).
+- Frontend debe usar /api/notification/send para enviar notificaciones.
+
+Tipos y estados
+- Tipos de notificación (type):
+  - appointment_created, appointment_updated, appointment_cancelled, appointment_reminder
+- Canales (channels.type): email | sms | app | whatsapp
+- Estados del canal (channels.status): pending | sent | delivered | failed
+- Prioridad (priority): low | normal | high | urgent (default: normal)
+
+Contratos de Endpoints
+
+1) POST /send (enviar notificación)
+Headers (vía gateway):
+- Authorization: Bearer <token>
+
+Headers (integración interna):
+- X-Internal-Key: <INTERNAL_API_KEY>
+
+Body JSON (estructura base):
+{
+  "type": "appointment_created" | "appointment_updated" | "appointment_cancelled" | "appointment_reminder",
+  "data": {
+    "patientId": "674d...",
+    "doctorId": "674d...",
+    "appointmentDate": "2025-11-01T14:00:00.000Z",
+    "extra": { "...": "opcional" }
+  }
+}
+
+Respuestas típicas:
+- 200:
+  { "message": "Notificación procesada exitosamente" }
+- 400: { "error": "Tipo de notificación no válido" }
+- 401: { "error": "Usuario no autenticado" } (si no se envía JWT ni X-Internal-Key)
+- 500: { "error": "Error interno del servidor" }
+
+Ejemplos de payload por tipo:
+- appointment_created
+  {
+    "type": "appointment_created",
+    "data": { "patientId": "...", "doctorId": "...", "appointmentDate": "2025-11-01T14:00:00.000Z" }
+  }
+- appointment_updated
+  {
+    "type": "appointment_updated",
+    "data": { "patientId": "..." }
+  }
+- appointment_cancelled
+  {
+    "type": "appointment_cancelled",
+    "data": { "patientId": "..." }
+  }
+- appointment_reminder
+  {
+    "type": "appointment_reminder",
+    "data": { "patientId": "...", "appointmentDate": "2025-11-01T14:00:00.000Z" }
+  }
+
+2) GET /health (health check)
+- 200: { service: "notification-service", status: "OK", time: "..." }
+
+Modelos resumidos
+Notification (Mongo):
+{
+  recipientId: string,
+  recipientType: 'patient' | 'doctor' | 'admin',
+  type: string,                        // e.g., 'appointment_created'
+  title?: string,
+  message?: string,
+  channels: [
+    { type: 'email'|'sms'|'app'|'whatsapp', status: 'pending'|'sent'|'delivered'|'failed', sentAt?: Date, error?: string }
+  ],
+  data?: any,                          // payload adicional para plantillas
+  priority: 'low'|'normal'|'high'|'urgent',
+  scheduledFor?: Date,                 // envío diferido (si se usa)
+  isRead: boolean,
+  readAt?: Date,
+  createdAt: Date
+}
+
+Canales y colas (infra):
+- email_notifications, sms_notifications, app_notifications (RabbitMQ)
+- Envíos:
+  - Email: Nodemailer (EMAIL_USER/EMAIL_PASSWORD)
+  - SMS: Twilio (TWILIO_*)
+  - App: marca como delivered en base
+
+Buenas prácticas Frontend
+- Usar siempre el gateway: baseURL http://localhost:3000/api/notification.
+- No dependas de la entrega inmediata: el envío es asíncrono vía colas.
+- Para recordatorios, dispara el evento en Appointment Service; Notification Service gestionará canales.
+- Mensajes y títulos pueden ajustarse desde backend; el frontend solo envía el evento + datos mínimos.
+- No exponer claves de Twilio ni credenciales de email en el frontend (solo backend).
+
+Snippet cliente (axios)
+import axios from "axios";
+
+export const notifications = axios.create({
+  baseURL: import.meta.env.VITE_NOTIFICATION_BASE_URL || "http://localhost:3000/api/notification",
+});
+
+export async function sendNotification(token, type, data) {
+  const { data: res } = await notifications.post(
+    "/send",
+    { type, data },
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  return res; // { message }
+}
+
+// Ejemplo: recordatorio de cita
+// await sendNotification(token, 'appointment_reminder', { patientId, appointmentDate })
+
+Notas importantes
+- Este servicio puede ser llamado por otros microservicios con X-Internal-Key (server-to-server), evitando JWT.
+- Para email en desarrollo con Gmail, habilita "app passwords" o proveedores SMTP de test (Mailtrap, Ethereal).
+- Twilio requiere configurar TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN y TWILIO_PHONE_NUMBER.
+- RabbitMQ debe estar disponible (RABBITMQ_URL); si no, los envíos fallarán.
+- El campo data.recipient info (email/phone) se resuelve internamente; solo envía patientId/doctorId.
+
+Variables de entorno (referencia)
+- PORT (default 3005)
+- MONGODB_URI
+- RABBITMQ_URL (default amqp://localhost)
+- EMAIL_USER, EMAIL_PASSWORD, EMAIL_FROM (default noreply@healthbridge.com)
+- TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER
+- INTERNAL_API_KEY (default internal-secret-key-dev)
+- LOG_LEVEL

@@ -1,0 +1,1230 @@
+═══════════════════════════════════════════════════════════════════════════════
+                    HEALTHBRIDGE SUBSCRIPTION SERVICE 
+                         GUÍA PARA INTEGRACIÓN FRONTEND
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 ÍNDICE
+─────────────────────────────────────────────────────────────────────────────
+1. INFORMACIÓN GENERAL
+2. CONFIGURACIÓN CORS Y AUTENTICACIÓN
+3. MODELO FREEMIUM Y PLANES
+4. ENDPOINTS - PLANES (Públicos)
+5. ENDPOINTS - SUSCRIPCIONES (Autenticados)
+6. ENDPOINTS - USO Y LÍMITES (Autenticados)
+7. INTEGRACIÓN CON STRIPE
+8. EJEMPLOS DE USO CON AXIOS
+9. MANEJO DE ERRORES
+10. NOTAS IMPORTANTES
+
+
+═══════════════════════════════════════════════════════════════════════════════
+1. INFORMACIÓN GENERAL
+═══════════════════════════════════════════════════════════════════════════════
+
+🔗 URLs BASE:
+─────────────────────────────────────────────────────────────────────────────
+• Gateway (Recomendado): http://localhost:3000/api/subscription
+• Servicio Directo (Dev): http://localhost:3007
+
+🗄️ BASE DE DATOS:
+─────────────────────────────────────────────────────────────────────────────
+• MongoDB: healthbridge-subscriptions
+• Colecciones:
+  - plans: Planes disponibles (Basic, Premium, Enterprise)
+  - subscriptions: Suscripciones de usuarios
+  - usagetrackings: Tracking de uso mensual por usuario
+
+🔑 PUERTO:
+─────────────────────────────────────────────────────────────────────────────
+• 3007
+
+💳 PROCESADOR DE PAGOS:
+─────────────────────────────────────────────────────────────────────────────
+• Stripe (para pagos online)
+• Modos: Test (desarrollo) / Live (producción)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+2. CONFIGURACIÓN CORS Y AUTENTICACIÓN
+═══════════════════════════════════════════════════════════════════════════════
+
+🔒 AUTENTICACIÓN:
+─────────────────────────────────────────────────────────────────────────────
+• Tipo: JWT Bearer Token
+• Header requerido:
+  Authorization: Bearer <access_token>
+
+⚠️ NOTA: Solo los endpoints de /plans son PÚBLICOS, todo lo demás requiere token
+
+🌐 CORS:
+─────────────────────────────────────────────────────────────────────────────
+• Orígenes permitidos: http://localhost:5173, http://localhost:3000
+• Headers permitidos: Content-Type, Authorization
+• Métodos: GET, POST, PUT, DELETE, OPTIONS
+
+
+═══════════════════════════════════════════════════════════════════════════════
+3. MODELO FREEMIUM Y PLANES
+═══════════════════════════════════════════════════════════════════════════════
+
+📊 PLANES DISPONIBLES:
+─────────────────────────────────────────────────────────────────────────────
+
+┌───────────────────┬───────────────┬───────────────┬─────────────────┐
+│     FEATURE       │     BASIC     │    PREMIUM    │   ENTERPRISE    │
+├───────────────────┼───────────────┼───────────────┼─────────────────┤
+│ Precio            │ Bs. 0 (Gratis)│   Bs. 50/mes  │   Bs. 120/mes   │
+├───────────────────┼───────────────┼───────────────┼─────────────────┤
+│ Citas/mes         │       2       │      10       │    ♾️ Ilimitado │
+├───────────────────┼───────────────┼───────────────┼─────────────────┤
+│ Almacenamiento    │   100 MB      │    500 MB     │    ♾️ Ilimitado │
+├───────────────────┼───────────────┼───────────────┼─────────────────┤
+│ Archivos/registro │       1       │       5       │    ♾️ Ilimitado │
+├───────────────────┼───────────────┼───────────────┼─────────────────┤
+│ Telemedicina      │      ❌       │    ✅ Básica  │   ✅ Premium    │
+├───────────────────┼───────────────┼───────────────┼─────────────────┤
+│ Acceso API        │      ❌       │      ❌       │       ✅        │
+├───────────────────┼───────────────┼───────────────┼─────────────────┤
+│ Multi-clínica     │      ❌       │      ❌       │       ✅        │
+├───────────────────┼───────────────┼───────────────┼─────────────────┤
+│ Notificaciones    │ Email + Push  │ Email+SMS+Push│ Email+SMS+Push  │
+├───────────────────┼───────────────┼───────────────┼─────────────────┤
+│ Reportes avanzados│      ❌       │      ❌       │       ✅        │
+├───────────────────┼───────────────┼───────────────┼─────────────────┤
+│ Branding custom   │      ❌       │      ❌       │       ✅        │
+├───────────────────┼───────────────┼───────────────┼─────────────────┤
+│ Soporte           │ Email (48h)   │ Prioritario   │      24/7       │
+└───────────────────┴───────────────┴───────────────┴─────────────────┘
+
+💡 JERARQUÍA DE PLANES:
+─────────────────────────────────────────────────────────────────────────────
+basic < premium < enterprise
+
+🔄 CAMBIOS DE PLAN:
+─────────────────────────────────────────────────────────────────────────────
+• Upgrade: Inmediato (se cobra la diferencia prorrateada)
+• Downgrade: Al final del período actual (acceso premium hasta la fecha de fin)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+4. ENDPOINTS - PLANES (PÚBLICOS - Sin autenticación)
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+📌 4.1. OBTENER TODOS LOS PLANES
+─────────────────────────────────────────────────────────────────────────────
+GET /api/plans
+
+Headers:
+  (ninguno requerido)
+
+Response 200:
+{
+  "success": true,
+  "count": 3,
+  "plans": [
+    {
+      "_id": "plan_id_1",
+      "name": "Plan Básico",
+      "type": "basic",
+      "price": 0,
+      "currency": "BOB",
+      "billingPeriod": "monthly",
+      "features": [
+        "2 citas por mes",
+        "100MB de almacenamiento",
+        "1 archivo por registro",
+        "Notificaciones por email",
+        "Soporte por email (48h)"
+      ],
+      "limits": {
+        "appointments": 2,
+        "storage": 104857600,        // en bytes (100MB)
+        "filesPerRecord": 1
+      },
+      "isActive": true
+    },
+    {
+      "_id": "plan_id_2",
+      "name": "Plan Premium",
+      "type": "premium",
+      "price": 50,
+      "currency": "BOB",
+      "billingPeriod": "monthly",
+      "features": [
+        "10 citas por mes",
+        "500MB de almacenamiento",
+        "5 archivos por registro",
+        "Teleconsultas básicas",
+        "Notificaciones SMS + Email + Push",
+        "Soporte prioritario (24h)"
+      ],
+      "limits": {
+        "appointments": 10,
+        "storage": 524288000,        // en bytes (500MB)
+        "filesPerRecord": 5
+      },
+      "isActive": true
+    },
+    {
+      "_id": "plan_id_3",
+      "name": "Plan Enterprise",
+      "type": "enterprise",
+      "price": 120,
+      "currency": "BOB",
+      "billingPeriod": "monthly",
+      "features": [
+        "Citas ilimitadas",
+        "Almacenamiento ilimitado",
+        "Archivos ilimitados",
+        "Teleconsultas premium (HD + grabación)",
+        "API completa",
+        "Multi-clínica",
+        "Reportes avanzados",
+        "Soporte 24/7",
+        "Branding personalizado"
+      ],
+      "limits": {
+        "appointments": -1,          // -1 = ilimitado
+        "storage": -1,
+        "filesPerRecord": -1
+      },
+      "isActive": true
+    }
+  ]
+}
+
+Errores:
+  500: Error interno del servidor
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 4.2. OBTENER PLAN ESPECÍFICO
+─────────────────────────────────────────────────────────────────────────────
+GET /api/plans/:type
+
+Params:
+  type: "basic" | "premium" | "enterprise"
+
+Ejemplo: GET /api/plans/premium
+
+Response 200:
+{
+  "success": true,
+  "plan": {
+    "_id": "plan_id_2",
+    "name": "Plan Premium",
+    "type": "premium",
+    "price": 50,
+    "currency": "BOB",
+    "billingPeriod": "monthly",
+    "features": [...],
+    "limits": {
+      "appointments": 10,
+      "storage": 524288000,
+      "filesPerRecord": 5
+    },
+    "isActive": true
+  }
+}
+
+Errores:
+  404: Plan no encontrado
+  500: Error interno del servidor
+
+
+═══════════════════════════════════════════════════════════════════════════════
+5. ENDPOINTS - SUSCRIPCIONES (REQUIEREN AUTENTICACIÓN)
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+📌 5.1. OBTENER MI SUSCRIPCIÓN ACTUAL
+─────────────────────────────────────────────────────────────────────────────
+GET /api/subscription/my-subscription
+
+Headers:
+  Authorization: Bearer <access_token>
+
+Response 200:
+{
+  "subscription": {
+    "_id": "sub_id_123",
+    "userId": "user_id_456",
+    "planType": "premium",
+    "status": "active",           // "active" | "cancelled" | "expired" | "trial"
+    "startDate": "2025-01-01T00:00:00.000Z",
+    "endDate": "2025-02-01T00:00:00.000Z",
+    "autoRenew": true,
+    "paymentMethod": "stripe",    // "stripe" | "cash" | "bank_transfer"
+    "stripeCustomerId": "cus_xxxxx",
+    "stripeSubscriptionId": "sub_xxxxx",
+    "lastPaymentDate": "2025-01-01T00:00:00.000Z",
+    "nextPaymentDate": "2025-02-01T00:00:00.000Z",
+    "cancelledAt": null,
+    "cancellationReason": null,
+    "metadata": {}
+  },
+  "usage": {
+    "userId": "user_id_456",
+    "period": {
+      "month": 1,
+      "year": 2025
+    },
+    "usage": {
+      "appointments": {
+        "count": 5,
+        "limit": 10
+      },
+      "storage": {
+        "usedMB": 120,
+        "limitMB": 500
+      },
+      "apiCalls": {
+        "count": 0,
+        "limit": 0
+      }
+    },
+    "lastUpdated": "2025-01-15T10:30:00.000Z"
+  }
+}
+
+Errores:
+  401: Token no proporcionado o inválido
+  404: Suscripción no encontrada (usuario no tiene suscripción)
+  500: Error interno del servidor
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 5.2. CREAR SUSCRIPCIÓN
+─────────────────────────────────────────────────────────────────────────────
+POST /api/subscription
+
+Headers:
+  Authorization: Bearer <access_token>
+  Content-Type: application/json
+
+Body:
+{
+  "planType": "premium",         // "basic" | "premium" | "enterprise"
+  "paymentMethod": "stripe"      // "stripe" | "cash" | "bank_transfer"
+}
+
+Response 201:
+{
+  "message": "Suscripción creada exitosamente",
+  "subscription": {
+    "_id": "sub_id_789",
+    "userId": "user_id_456",
+    "planType": "premium",
+    "status": "active",
+    "startDate": "2025-01-20T00:00:00.000Z",
+    "endDate": "2025-02-20T00:00:00.000Z",
+    "autoRenew": false,
+    "paymentMethod": "stripe",
+    "stripeCustomerId": "cus_xxxxx",
+    "metadata": {}
+  }
+}
+
+⚠️ NOTA: Si planType es "premium" o "enterprise", necesitarás completar el pago
+         en Stripe usando el checkout session (ver sección 7)
+
+Errores:
+  400: Plan type requerido o inválido
+  401: Usuario no autenticado
+  409: El usuario ya tiene una suscripción activa
+  500: Error interno del servidor
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 5.3. UPGRADE DE SUSCRIPCIÓN
+─────────────────────────────────────────────────────────────────────────────
+POST /api/subscription/upgrade
+
+Headers:
+  Authorization: Bearer <access_token>
+  Content-Type: application/json
+
+Body:
+{
+  "planType": "enterprise"       // Plan superior al actual
+}
+
+Response 200:
+{
+  "message": "Suscripción actualizada exitosamente",
+  "subscription": {
+    "_id": "sub_id_789",
+    "userId": "user_id_456",
+    "planType": "enterprise",
+    "status": "active",
+    "startDate": "2025-01-01T00:00:00.000Z",
+    "endDate": "2025-02-01T00:00:00.000Z",    // se mantiene la fecha original
+    "autoRenew": true,
+    "paymentMethod": "stripe",
+    "metadata": {
+      "upgradedFrom": "premium",
+      "upgradedAt": "2025-01-20T10:00:00.000Z"
+    }
+  }
+}
+
+💡 LÓGICA DE UPGRADE:
+• Upgrade es INMEDIATO
+• Se cobra la diferencia prorrateada entre planes
+• El endDate se mantiene igual (no se extiende)
+
+Errores:
+  400: Nuevo plan requerido o inválido
+  401: Usuario no autenticado
+  403: No puedes hacer upgrade (ya estás en el plan más alto o no hay suscripción)
+  500: Error interno del servidor
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 5.4. DOWNGRADE DE SUSCRIPCIÓN
+─────────────────────────────────────────────────────────────────────────────
+POST /api/subscription/downgrade
+
+Headers:
+  Authorization: Bearer <access_token>
+  Content-Type: application/json
+
+Body:
+{
+  "planType": "basic"            // Plan inferior al actual
+}
+
+Response 200:
+{
+  "message": "Downgrade programado exitosamente",
+  "subscription": {
+    "_id": "sub_id_789",
+    "userId": "user_id_456",
+    "planType": "premium",       // ⚠️ Sigue siendo premium hasta endDate
+    "status": "active",
+    "startDate": "2025-01-01T00:00:00.000Z",
+    "endDate": "2025-02-01T00:00:00.000Z",
+    "autoRenew": true,
+    "paymentMethod": "stripe",
+    "metadata": {
+      "scheduledDowngradeTo": "basic",
+      "downgradeDate": "2025-02-01T00:00:00.000Z"
+    }
+  }
+}
+
+💡 LÓGICA DE DOWNGRADE:
+• Downgrade es AL FINAL DEL PERÍODO ACTUAL
+• El usuario mantiene acceso al plan actual hasta endDate
+• Un cron job aplicará el cambio automáticamente en endDate
+
+Errores:
+  400: Nuevo plan requerido o inválido
+  401: Usuario no autenticado
+  403: No puedes hacer downgrade (ya estás en el plan más bajo)
+  500: Error interno del servidor
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 5.5. CANCELAR SUSCRIPCIÓN
+─────────────────────────────────────────────────────────────────────────────
+POST /api/subscription/cancel
+
+Headers:
+  Authorization: Bearer <access_token>
+  Content-Type: application/json
+
+Body:
+{
+  "reason": "No lo uso suficiente",           // opcional
+  "feedback": "El servicio es bueno pero..."  // opcional
+}
+
+Response 200:
+{
+  "message": "Suscripción cancelada exitosamente",
+  "subscription": {
+    "_id": "sub_id_789",
+    "userId": "user_id_456",
+    "planType": "premium",
+    "status": "cancelled",
+    "startDate": "2025-01-01T00:00:00.000Z",
+    "endDate": "2025-02-01T00:00:00.000Z",    // tendrás acceso hasta aquí
+    "autoRenew": false,
+    "cancelledAt": "2025-01-20T15:00:00.000Z",
+    "cancellationReason": "No lo uso suficiente",
+    "metadata": {
+      "feedback": "El servicio es bueno pero..."
+    }
+  }
+}
+
+💡 LÓGICA DE CANCELACIÓN:
+• El usuario mantiene acceso hasta endDate
+• No se cobra el siguiente período
+• Se guarda la razón para analytics
+• Un cron job cambiará el status a "expired" al llegar a endDate
+
+Errores:
+  401: Usuario no autenticado
+  404: No se encontró suscripción activa
+  500: Error interno del servidor
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 5.6. CREAR CHECKOUT SESSION DE STRIPE
+─────────────────────────────────────────────────────────────────────────────
+POST /api/subscription/checkout-session
+
+Headers:
+  Authorization: Bearer <access_token>
+  Content-Type: application/json
+
+Body:
+{
+  "priceId": "price_xxxxx"       // Stripe Price ID del plan
+}
+
+Response 200:
+{
+  "sessionId": "cs_test_xxxxx",
+  "url": "https://checkout.stripe.com/pay/cs_test_xxxxx"
+}
+
+💡 USO: Redirige al usuario a la URL para completar el pago en Stripe
+
+Errores:
+  400: Price ID requerido
+  401: Usuario no autenticado
+  500: Error interno del servidor
+
+
+═══════════════════════════════════════════════════════════════════════════════
+6. ENDPOINTS - USO Y LÍMITES (REQUIEREN AUTENTICACIÓN)
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+📌 6.1. OBTENER USO ACTUAL DEL MES
+─────────────────────────────────────────────────────────────────────────────
+GET /api/usage/current
+
+Headers:
+  Authorization: Bearer <access_token>
+
+Response 200:
+{
+  "success": true,
+  "usage": {
+    "userId": "user_id_456",
+    "period": {
+      "month": 1,
+      "year": 2025
+    },
+    "usage": {
+      "appointments": {
+        "count": 7,
+        "limit": 10
+      },
+      "storage": {
+        "usedMB": 245,
+        "limitMB": 500
+      },
+      "apiCalls": {
+        "count": 0,
+        "limit": 0
+      }
+    },
+    "lastUpdated": "2025-01-20T10:30:00.000Z"
+  }
+}
+
+⚠️ IMPORTANTE:
+• Este endpoint devuelve el uso del mes ACTUAL
+• Si el usuario no tiene registro de uso, se crea automáticamente
+• Los límites se toman del plan actual del usuario
+
+Errores:
+  401: Usuario no autenticado
+  500: Error interno del servidor
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 6.2. VERIFICAR LÍMITE DE UNA FUNCIONALIDAD
+─────────────────────────────────────────────────────────────────────────────
+GET /api/usage/check/:feature
+
+Headers:
+  Authorization: Bearer <access_token>
+
+Params:
+  feature: "appointments" | "storage" | "apiCalls"
+
+Ejemplo: GET /api/usage/check/appointments
+
+Response 200 (Permitido):
+{
+  "success": true,
+  "allowed": true,
+  "used": 5,
+  "limit": 10,
+  "remaining": 5,
+  "feature": "appointments"
+}
+
+Response 200 (Límite alcanzado):
+{
+  "success": false,
+  "allowed": false,
+  "message": "Has alcanzado el límite de citas para tu plan Basic",
+  "used": 2,
+  "limit": 2,
+  "remaining": 0,
+  "feature": "appointments",
+  "suggestedPlan": "premium",    // Plan sugerido para upgrade
+  "suggestedPlanLimit": 10
+}
+
+💡 USO:
+• Llama a este endpoint ANTES de permitir una acción (crear cita, subir archivo)
+• Si allowed = false, muestra un mensaje al usuario sugiriendo upgrade
+
+Errores:
+  400: Feature inválida
+  401: Usuario no autenticado
+  404: No se encontró uso o suscripción del usuario
+  500: Error interno del servidor
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 6.3. REGISTRAR USO DE UNA FUNCIONALIDAD
+─────────────────────────────────────────────────────────────────────────────
+POST /api/usage/track
+
+Headers:
+  Authorization: Bearer <access_token>
+  Content-Type: application/json
+
+Body:
+{
+  "type": "appointment",         // "appointment" | "storage" | "apiCall"
+  "metadata": {
+    "appointmentId": "appt_123",  // opcional: metadatos adicionales
+    "action": "created"
+  }
+}
+
+Response 200:
+{
+  "success": true,
+  "message": "Uso registrado exitosamente",
+  "usage": {
+    "appointments": {
+      "count": 6,
+      "limit": 10,
+      "remaining": 4
+    }
+  }
+}
+
+Response 403 (Límite excedido):
+{
+  "success": false,
+  "error": "Límite excedido",
+  "message": "Has alcanzado el límite de citas para tu plan",
+  "suggestedPlan": "premium"
+}
+
+💡 USO:
+• Llama a este endpoint DESPUÉS de completar una acción exitosamente
+• Para storage, el metadata debe incluir { "sizeMB": 5 }
+• Este endpoint es principalmente para uso INTERNO entre servicios
+
+Errores:
+  400: Tipo de uso inválido
+  401: Usuario no autenticado
+  403: Límite excedido
+  500: Error interno del servidor
+
+
+═══════════════════════════════════════════════════════════════════════════════
+7. INTEGRACIÓN CON STRIPE
+═══════════════════════════════════════════════════════════════════════════════
+
+🔗 FLUJO DE PAGO CON STRIPE:
+─────────────────────────────────────────────────────────────────────────────
+
+1️⃣ Frontend: Usuario selecciona un plan Premium o Enterprise
+   
+2️⃣ Frontend: Llama a POST /api/subscription/checkout-session
+   Body: { "priceId": "price_xxxxx" }
+   
+3️⃣ Backend: Crea Checkout Session en Stripe y devuelve URL
+
+4️⃣ Frontend: Redirige al usuario a la URL de Stripe
+
+5️⃣ Usuario: Completa el pago en Stripe
+
+6️⃣ Stripe: Envía webhook a POST /api/subscription/webhook
+
+7️⃣ Backend: Actualiza la suscripción del usuario automáticamente
+
+8️⃣ Stripe: Redirige al usuario de vuelta a tu app (success_url)
+
+9️⃣ Frontend: Muestra mensaje de éxito y recarga la suscripción
+
+
+📌 WEBHOOK DE STRIPE:
+─────────────────────────────────────────────────────────────────────────────
+POST /api/subscription/webhook
+
+⚠️ IMPORTANTE:
+• Este endpoint es SOLO para Stripe
+• NO requiere autenticación JWT
+• Requiere firma de Stripe en header "stripe-signature"
+• NO debes llamar a este endpoint desde el frontend
+
+Eventos procesados:
+• checkout.session.completed: Pago completado
+• customer.subscription.updated: Suscripción actualizada
+• customer.subscription.deleted: Suscripción cancelada
+
+
+═══════════════════════════════════════════════════════════════════════════════
+8. EJEMPLOS DE USO CON AXIOS
+═══════════════════════════════════════════════════════════════════════════════
+
+─────────────────────────────────────────────────────────────────────────────
+📌 8.1. SETUP DE AXIOS
+─────────────────────────────────────────────────────────────────────────────
+// src/api/subscriptionService.js
+import axios from 'axios';
+
+const API_URL = 'http://localhost:3000/api';
+
+const subscriptionApi = axios.create({
+  baseURL: `${API_URL}/subscription`,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+const planApi = axios.create({
+  baseURL: `${API_URL}/plans`,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+const usageApi = axios.create({
+  baseURL: `${API_URL}/usage`,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+// Interceptor para añadir token automáticamente
+[subscriptionApi, usageApi].forEach(api => {
+  api.interceptors.request.use(
+    (config) => {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    },
+    (error) => Promise.reject(error)
+  );
+});
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 8.2. OBTENER TODOS LOS PLANES (Público)
+─────────────────────────────────────────────────────────────────────────────
+// Obtener todos los planes disponibles
+export const getAllPlans = async () => {
+  try {
+    const response = await planApi.get('/');
+    return response.data;
+  } catch (error) {
+    console.error('Error obteniendo planes:', error);
+    throw error;
+  }
+};
+
+// Uso en componente React
+import { useEffect, useState } from 'react';
+import { getAllPlans } from '@/api/subscriptionService';
+
+function PricingPage() {
+  const [plans, setPlans] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        const data = await getAllPlans();
+        setPlans(data.plans);
+      } catch (error) {
+        console.error('Error:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPlans();
+  }, []);
+
+  if (loading) return <div>Cargando planes...</div>;
+
+  return (
+    <div className="pricing-grid">
+      {plans.map(plan => (
+        <PlanCard key={plan._id} plan={plan} />
+      ))}
+    </div>
+  );
+}
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 8.3. OBTENER MI SUSCRIPCIÓN ACTUAL
+─────────────────────────────────────────────────────────────────────────────
+// Obtener suscripción del usuario autenticado
+export const getMySubscription = async () => {
+  try {
+    const response = await subscriptionApi.get('/my-subscription');
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 404) {
+      // Usuario no tiene suscripción
+      return null;
+    }
+    throw error;
+  }
+};
+
+// Uso en componente
+import { getMySubscription } from '@/api/subscriptionService';
+
+function DashboardPage() {
+  const [subscription, setSubscription] = useState(null);
+  const [usage, setUsage] = useState(null);
+
+  useEffect(() => {
+    const fetchSubscription = async () => {
+      try {
+        const data = await getMySubscription();
+        if (data) {
+          setSubscription(data.subscription);
+          setUsage(data.usage);
+        }
+      } catch (error) {
+        console.error('Error:', error);
+      }
+    };
+
+    fetchSubscription();
+  }, []);
+
+  return (
+    <div>
+      <h2>Mi Plan: {subscription?.planType || 'Ninguno'}</h2>
+      <p>Estado: {subscription?.status}</p>
+      
+      <h3>Uso del mes:</h3>
+      <p>Citas: {usage?.usage.appointments.count} / {usage?.usage.appointments.limit}</p>
+      <p>Almacenamiento: {usage?.usage.storage.usedMB}MB / {usage?.usage.storage.limitMB}MB</p>
+    </div>
+  );
+}
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 8.4. CREAR SUSCRIPCIÓN
+─────────────────────────────────────────────────────────────────────────────
+// Crear nueva suscripción
+export const createSubscription = async (planType, paymentMethod = 'stripe') => {
+  try {
+    const response = await subscriptionApi.post('/', {
+      planType,
+      paymentMethod
+    });
+    return response.data;
+  } catch (error) {
+    if (error.response?.status === 409) {
+      throw new Error('Ya tienes una suscripción activa');
+    }
+    throw error;
+  }
+};
+
+// Uso en componente
+import { createSubscription } from '@/api/subscriptionService';
+
+function UpgradeButton({ planType }) {
+  const [loading, setLoading] = useState(false);
+
+  const handleUpgrade = async () => {
+    setLoading(true);
+    try {
+      const result = await createSubscription(planType);
+      alert('¡Suscripción creada exitosamente!');
+      // Redirigir o refrescar
+    } catch (error) {
+      alert(error.message || 'Error al crear suscripción');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <button onClick={handleUpgrade} disabled={loading}>
+      {loading ? 'Procesando...' : `Suscribirse a ${planType}`}
+    </button>
+  );
+}
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 8.5. HACER UPGRADE CON PAGO EN STRIPE
+─────────────────────────────────────────────────────────────────────────────
+// Upgrade a plan superior
+export const upgradeSubscription = async (planType) => {
+  try {
+    const response = await subscriptionApi.post('/upgrade', {
+      planType
+    });
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// Crear checkout session
+export const createCheckoutSession = async (priceId) => {
+  try {
+    const response = await subscriptionApi.post('/checkout-session', {
+      priceId
+    });
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// Uso en componente
+import { upgradeSubscription, createCheckoutSession } from '@/api/subscriptionService';
+
+function UpgradeModal({ currentPlan, targetPlan }) {
+  const handleUpgrade = async () => {
+    try {
+      // 1. Iniciar upgrade (crea intención en backend)
+      await upgradeSubscription(targetPlan.type);
+
+      // 2. Si el plan requiere pago, crear checkout session
+      if (targetPlan.price > 0) {
+        const { url } = await createCheckoutSession(targetPlan.stripePriceId);
+        
+        // 3. Redirigir a Stripe
+        window.location.href = url;
+      } else {
+        // Plan gratuito, redirigir a dashboard
+        window.location.href = '/dashboard';
+      }
+    } catch (error) {
+      alert('Error al procesar upgrade: ' + error.message);
+    }
+  };
+
+  return (
+    <div className="modal">
+      <h2>Upgrade a {targetPlan.name}</h2>
+      <p>Precio: Bs. {targetPlan.price}/mes</p>
+      <button onClick={handleUpgrade}>Confirmar Upgrade</button>
+    </div>
+  );
+}
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 8.6. VERIFICAR LÍMITE ANTES DE ACCIÓN
+─────────────────────────────────────────────────────────────────────────────
+// Verificar si el usuario puede realizar una acción
+export const checkLimit = async (feature) => {
+  try {
+    const response = await usageApi.get(`/check/${feature}`);
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// Uso en componente - Verificar antes de crear cita
+import { checkLimit } from '@/api/subscriptionService';
+
+function CreateAppointmentButton() {
+  const [canCreate, setCanCreate] = useState(true);
+  const [limitInfo, setLimitInfo] = useState(null);
+
+  useEffect(() => {
+    const verifyLimit = async () => {
+      try {
+        const result = await checkLimit('appointments');
+        setCanCreate(result.allowed);
+        setLimitInfo(result);
+      } catch (error) {
+        console.error('Error verificando límite:', error);
+      }
+    };
+
+    verifyLimit();
+  }, []);
+
+  const handleClick = () => {
+    if (!canCreate) {
+      alert(
+        `Has alcanzado el límite de ${limitInfo.limit} citas para tu plan. ` +
+        `Considera hacer upgrade a ${limitInfo.suggestedPlan}.`
+      );
+      return;
+    }
+
+    // Proceder con la creación de cita
+    createAppointment();
+  };
+
+  return (
+    <div>
+      <button onClick={handleClick} disabled={!canCreate}>
+        {canCreate 
+          ? `Crear Cita (${limitInfo?.remaining} restantes)` 
+          : 'Límite alcanzado - Upgrade requerido'
+        }
+      </button>
+    </div>
+  );
+}
+
+
+─────────────────────────────────────────────────────────────────────────────
+📌 8.7. CANCELAR SUSCRIPCIÓN
+─────────────────────────────────────────────────────────────────────────────
+// Cancelar suscripción actual
+export const cancelSubscription = async (reason, feedback) => {
+  try {
+    const response = await subscriptionApi.post('/cancel', {
+      reason,
+      feedback
+    });
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// Uso en componente
+import { cancelSubscription } from '@/api/subscriptionService';
+
+function CancelSubscriptionModal({ subscription, onClose }) {
+  const [reason, setReason] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleCancel = async () => {
+    setLoading(true);
+    try {
+      const result = await cancelSubscription(reason, feedback);
+      alert(
+        `Suscripción cancelada. Tendrás acceso hasta ${
+          new Date(result.subscription.endDate).toLocaleDateString()
+        }`
+      );
+      onClose();
+    } catch (error) {
+      alert('Error al cancelar: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal">
+      <h2>Cancelar Suscripción</h2>
+      
+      <label>
+        ¿Por qué cancelas?
+        <select value={reason} onChange={e => setReason(e.target.value)}>
+          <option value="">Selecciona...</option>
+          <option value="too_expensive">Muy caro</option>
+          <option value="not_using">No lo uso suficiente</option>
+          <option value="missing_features">Falta funcionalidades</option>
+          <option value="technical_issues">Problemas técnicos</option>
+          <option value="other">Otro</option>
+        </select>
+      </label>
+
+      <label>
+        Comentarios adicionales (opcional):
+        <textarea 
+          value={feedback} 
+          onChange={e => setFeedback(e.target.value)}
+          placeholder="Ayúdanos a mejorar..."
+        />
+      </label>
+
+      <div className="actions">
+        <button onClick={onClose}>Volver</button>
+        <button onClick={handleCancel} disabled={loading || !reason}>
+          {loading ? 'Cancelando...' : 'Confirmar Cancelación'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
+═══════════════════════════════════════════════════════════════════════════════
+9. MANEJO DE ERRORES
+═══════════════════════════════════════════════════════════════════════════════
+
+🔴 CÓDIGOS DE ERROR:
+─────────────────────────────────────────────────────────────────────────────
+• 400: Bad Request - Datos inválidos o faltantes
+• 401: Unauthorized - Token no proporcionado o inválido
+• 403: Forbidden - Sin permisos o límite excedido
+• 404: Not Found - Recurso no encontrado
+• 409: Conflict - El recurso ya existe
+• 500: Internal Server Error - Error del servidor
+
+📋 ESTRUCTURA DE ERRORES:
+─────────────────────────────────────────────────────────────────────────────
+{
+  "error": "Descripción breve del error",
+  "message": "Mensaje detallado para el usuario",
+  "suggestedPlan": "premium"  // solo en errores de límite
+}
+
+🛡️ MANEJO RECOMENDADO:
+─────────────────────────────────────────────────────────────────────────────
+// Interceptor global de errores
+subscriptionApi.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response) {
+      const { status, data } = error.response;
+
+      switch (status) {
+        case 401:
+          // Token expirado, redirigir a login
+          localStorage.removeItem('accessToken');
+          window.location.href = '/login';
+          break;
+
+        case 403:
+          // Límite excedido
+          if (data.suggestedPlan) {
+            // Mostrar modal de upgrade
+            showUpgradeModal(data.suggestedPlan, data.message);
+          }
+          break;
+
+        case 404:
+          // Usuario sin suscripción
+          if (data.error === 'Suscripción no encontrada') {
+            // Redirigir a página de planes
+            window.location.href = '/pricing';
+          }
+          break;
+
+        case 500:
+          // Error del servidor
+          alert('Error del servidor. Por favor intenta de nuevo.');
+          break;
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+
+═══════════════════════════════════════════════════════════════════════════════
+10. NOTAS IMPORTANTES
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️ LIMITACIONES DEL PLAN:
+─────────────────────────────────────────────────────────────────────────────
+• Los límites se aplican por MES CALENDARIO (se resetean el día 1 de cada mes)
+• El valor -1 en los límites significa ILIMITADO
+• Los upgrades son inmediatos, los downgrades son al final del período
+
+🔄 RENOVACIÓN AUTOMÁTICA:
+─────────────────────────────────────────────────────────────────────────────
+• Si autoRenew = true, la suscripción se renueva automáticamente
+• Si autoRenew = false, la suscripción expira al llegar a endDate
+• Un cron job procesa las renovaciones diariamente
+
+💳 PAGOS CON STRIPE:
+─────────────────────────────────────────────────────────────────────────────
+• Usar Stripe Checkout para una integración segura
+• El backend maneja webhooks automáticamente
+• NUNCA manejar información de tarjetas directamente
+• En desarrollo usar tarjeta de prueba: 4242 4242 4242 4242
+
+🔐 SEGURIDAD:
+─────────────────────────────────────────────────────────────────────────────
+• Todos los endpoints (excepto /plans) requieren JWT token
+• El webhook de Stripe valida la firma automáticamente
+• No expongas STRIPE_SECRET_KEY en el frontend
+• Usa HTTPS en producción
+
+📊 MONITOREO DE USO:
+─────────────────────────────────────────────────────────────────────────────
+• Verifica límites ANTES de permitir acciones
+• Registra uso DESPUÉS de acciones exitosas
+• Muestra uso restante al usuario de forma visible
+• Sugiere upgrade cuando se acerque al límite
+
+🎨 UX RECOMENDADA:
+─────────────────────────────────────────────────────────────────────────────
+• Mostrar barra de progreso del uso (ej: "7/10 citas usadas")
+• Deshabilitar botones cuando límite alcanzado
+• Mostrar modal de upgrade cuando intente exceder límite
+• Indicar claramente los beneficios de cada plan
+• Permitir cancelación fácil (con feedback)
+
+🔔 NOTIFICACIONES:
+─────────────────────────────────────────────────────────────────────────────
+• Notificar al usuario cuando alcance 80% del límite
+• Enviar recordatorio antes de renovación
+• Confirmar upgrade/downgrade/cancelación por email
+• Avisar cuando una suscripción esté por expirar
+
+🧪 TESTING:
+─────────────────────────────────────────────────────────────────────────────
+• Usar modo TEST de Stripe en desarrollo
+• Tarjeta de prueba: 4242 4242 4242 4242
+• Webhook testing con Stripe CLI: stripe listen --forward-to localhost:3007/api/subscription/webhook
+• Verificar que los límites se apliquen correctamente
+
+📞 SOPORTE:
+─────────────────────────────────────────────────────────────────────────────
+• Para problemas con pagos, revisar logs de Stripe
+• Para problemas con límites, verificar UsageTracking en MongoDB
+• Para errores de webhook, verificar STRIPE_WEBHOOK_SECRET
+
+
+═══════════════════════════════════════════════════════════════════════════════
+                              FIN DEL DOCUMENTO
+═══════════════════════════════════════════════════════════════════════════════
+
+🎉 ¡Guía completa del Subscription Service!
+
+Esta documentación cubre todo lo necesario para integrar el sistema de
+suscripciones Freemium en tu frontend de HealthBridge.
+
+Si tienes dudas adicionales, consulta:
+• README.md del subscription-service
+• Documentación de Stripe: https://stripe.com/docs
+• Logs del servicio en logs/combined.log

@@ -1,0 +1,220 @@
+HealthBridge Auth Service - Guía para Frontend
+Fecha: 2025-10-23
+
+Resumen
+- Servicio responsable de autenticación y emisión de tokens (JWT access + refresh).
+- Endpoints públicos: register, login, refresh-token, verify-token, health.
+- Endpoints protegidos: logout, logout-all, profile.
+- Validaciones estrictas (email, contraseña, rol) y rate limiting.
+- Recomendación: consumir SIEMPRE vía API Gateway.
+
+Base URLs
+- Vía API Gateway (RECOMENDADO): http://localhost:3000/api/auth
+- Directo al servicio (desarrollo): http://localhost:3001/api/auth
+- Variable sugerida en frontend:
+  - VITE_AUTH_BASE_URL=http://localhost:3000/api/auth
+
+CORS (si consumes directo al servicio)
+- Orígenes permitidos: definidos en ALLOWED_ORIGINS (por defecto http://localhost:5173, http://localhost:3000).
+- credentials: true; OPTIONS responde 200.
+- Métodos: estándar REST (POST/GET).
+
+JWT y Refresh Tokens
+- Access token payload: { userId: string, email: string, role: 'admin'|'doctor'|'patient' }
+- Issuer: healthbridge-auth, Audience: healthbridge-app
+- Expiración por defecto: access (JWT_EXPIRES_IN=7d), refresh (JWT_REFRESH_EXPIRES_IN=30d)
+- Ambos tokens se devuelven en JSON (no cookies).
+
+Reglas de contraseña (register)
+- Mínimo 12 caracteres
+- Debe incluir: mayúscula, minúscula, número y carácter especial
+
+Rate limiting (auth-service)
+- Login: 5 intentos por 15 min (HTTP 429 al exceder)
+- General: 100 solicitudes por 15 min (HTTP 429 al exceder)
+- Nota: Si llamas a través del gateway, se aplica también el límite del gateway.
+
+Contratos de Endpoints
+
+1) POST /register (público)
+Body JSON:
+{
+  "email": "user@example.com",
+  "password": "Password123!@#",
+  "firstName": "Nombre",
+  "lastName": "Apellido",
+  "role": "admin|doctor|patient",
+  "profile": {
+    "phone": "+59171234567",
+    "address": "...",
+    "birthDate": "YYYY-MM-DD",
+    "gender": "male|female|other",
+    "specialization": "Cardiología",
+    "licenseNumber": "MED-12345"
+  }
+}
+Respuesta 201:
+{
+  "message": "Usuario registrado exitosamente",
+  "user": {
+    "id": "...",
+    "email": "...",
+    "firstName": "...",
+    "lastName": "...",
+    "role": "...",
+    "profile": { ... }
+  },
+  "accessToken": "<jwt>",
+  "refreshToken": "<jwt>"
+}
+Errores:
+- 400: { error: "Errores de validación", details: [...] }
+- 409: { error: "El usuario ya existe" }
+- 500: { error: "Error interno del servidor" }
+
+2) POST /login (público, con rate limit estricto)
+Body JSON:
+{ "email": "user@example.com", "password": "Password123!@#" }
+Respuesta 200:
+{
+  "message": "Login exitoso",
+  "user": { "id": "...", "email": "...", "firstName": "...", "lastName": "...", "role": "...", "profile": { ... } },
+  "accessToken": "<jwt>",
+  "refreshToken": "<jwt>"
+}
+Errores:
+- 400: { error: "Errores de validación", details: [...] }
+- 401: { error: "Credenciales inválidas" }
+- 423: { error: "Cuenta bloqueada. Intenta nuevamente en X minutos" }
+- 429: { error: "Demasiados intentos. Intenta nuevamente más tarde." }
+- 500: { error: "Error interno del servidor" }
+
+3) POST /refresh-token (público)
+Body JSON:
+{ "refreshToken": "<jwt>" }
+Respuesta 200:
+{
+  "message": "Token renovado exitosamente",
+  "accessToken": "<nuevo_jwt>",
+  "refreshToken": "<nuevo_refresh>"
+}
+Errores:
+- 400: { error: "Refresh token requerido" }
+- 401: { error: "Refresh token inválido o expirado" }
+
+4) POST /verify-token (público)
+Headers:
+Authorization: Bearer <access_token>
+Respuesta 200:
+{
+  "valid": true,
+  "user": { "id": "...", "email": "...", "firstName": "...", "lastName": "...", "role": "...", "profile": { ... } }
+}
+Errores:
+- 401: { error: "Token requerido" } | { error: "Token inválido" }
+
+5) POST /logout (protegido)
+Headers:
+Authorization: Bearer <access_token>
+Body JSON:
+{ "refreshToken": "<jwt_refresh_a_revocar>" }
+Respuesta 200:
+{ "message": "Logout exitoso" }
+Errores:
+- 400: { error: "Usuario y refresh token requeridos" }
+- 401: { error: "Token inválido o expirado" | "Token no proporcionado" }
+
+6) POST /logout-all (protegido)
+Headers:
+Authorization: Bearer <access_token>
+Respuesta 200:
+{ "message": "Logout de todos los dispositivos exitoso" }
+Errores:
+- 400: { error: "Usuario requerido" }
+- 401: { error: "Token inválido o expirado" | "Token no proporcionado" }
+
+7) GET /profile (protegido)
+Headers:
+Authorization: Bearer <access_token>
+Respuesta 200:
+{
+  "user": {
+    "id": "...",
+    "email": "...",
+    "firstName": "...",
+    "lastName": "...",
+    "role": "...",
+    "profile": { ... },
+    "isEmailVerified": false,
+    "createdAt": "..."
+  }
+}
+Errores:
+- 401: { error: "Usuario no autenticado" } | { error: "Token inválido o expirado" }
+
+8) GET /health (público)
+Respuesta 200: información básica de estado.
+
+Modelos de error (patrones comunes)
+- 400 Validación:
+  { "error": "Errores de validación", "details": [ { msg, param, ... } ] }
+- 401 Autenticación:
+  { "error": "Token no proporcionado" } | { "error": "Token inválido o expirado" } | { "error": "Credenciales inválidas" }
+- 403 Autorización:
+  { "error": "No tienes permisos para acceder a este recurso" }
+- 404 Ruta:
+  { "error": "Ruta no encontrada", "path": "/api/...", "method": "GET|POST" }
+- 423 Bloqueo:
+  { "error": "Cuenta bloqueada. Intenta nuevamente en X minutos" }
+- 429 Rate limit:
+  { "error": "Demasiados intentos. Intenta nuevamente más tarde." }
+- 500 Interno:
+  { "error": "Error interno del servidor" }
+
+Sugerencia de cliente (axios)
+import axios from "axios";
+
+export const auth = axios.create({
+  baseURL: import.meta.env.VITE_AUTH_BASE_URL || "http://localhost:3000/api/auth",
+});
+
+export async function login(email, password) {
+  const { data } = await auth.post("/login", { email, password });
+  return data; // { user, accessToken, refreshToken }
+}
+
+export async function register(payload) {
+  const { data } = await auth.post("/register", payload);
+  return data; // { user, accessToken, refreshToken }
+}
+
+export async function refresh(refreshToken) {
+  const { data } = await auth.post("/refresh-token", { refreshToken });
+  return data; // { accessToken, refreshToken }
+}
+
+export async function verify(accessToken) {
+  const { data } = await auth.post("/verify-token", null, { headers: { Authorization: `Bearer ${accessToken}` } });
+  return data; // { valid, user }
+}
+
+export async function logout(accessToken, refreshToken) {
+  const { data } = await auth.post("/logout", { refreshToken }, { headers: { Authorization: `Bearer ${accessToken}` } });
+  return data; // { message }
+}
+
+Notas importantes
+- Usa el API Gateway en producción/desarrollo para evitar problemas de CORS y unificar seguridad.
+- El servicio realiza rotación de refresh tokens: SIEMPRE usa el último refreshToken devuelto por /login o /refresh-token.
+- Tras /register, el servicio intenta crear un perfil en user-service automáticamente; el registro no falla si user-service no está disponible, pero habrá un log.
+- El endpoint /profile actualmente depende del token del header; en caso de error, usa /verify-token con Authorization para validar/obtener el usuario.
+- No se utilizan cookies HttpOnly por defecto; la app frontend debe gestionar almacenamiento seguro de tokens (memoria o storage con cuidado).
+
+Variables de entorno (referencia)
+- PORT (default 3001)
+- MONGODB_URI
+- JWT_SECRET, JWT_EXPIRES_IN
+- JWT_REFRESH_SECRET, JWT_REFRESH_EXPIRES_IN
+- BCRYPT_ROUNDS (default 10), MAX_LOGIN_ATTEMPTS (default 5)
+- ALLOWED_ORIGINS (CORS)
+- LOG_LEVEL

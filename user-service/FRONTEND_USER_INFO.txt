@@ -1,0 +1,167 @@
+HealthBridge User Service - Guía para Frontend
+Fecha: 2025-10-23
+
+Resumen
+- Servicio de gestión de usuarios y perfiles (doctores, pacientes, admin).
+- Endpoints públicos: crear usuario (usado por auth), listar/buscar doctores, obtener doctor por id.
+- Endpoints protegidos: perfil propio (me), CRUD por id y estadísticas (según rol).
+- Seguridad: JWT (Bearer), CORS, rate limiting, control de roles.
+- Recomendación: consumir vía API Gateway.
+
+Base URLs
+- Vía API Gateway (RECOMENDADO): http://localhost:3000/api/user
+- Directo al servicio (desarrollo): http://localhost:3002/users
+- Variable sugerida en frontend:
+  - VITE_USER_BASE_URL=http://localhost:3000/api/user
+
+CORS y Seguridad
+- Orígenes: ALLOWED_ORIGINS (por defecto http://localhost:5173,http://localhost:3000).
+- Métodos: GET, POST, PUT, DELETE.
+- Rate limiting: 100 req/15min por IP (respuesta 429 con mensaje).
+- Autenticación: Authorization: Bearer <access_token> para rutas protegidas.
+
+Prefijo correcto a través del Gateway
+- El gateway mapea /api/user -> user-service (/users). El frontend debe llamar siempre /api/user/*.
+
+Contratos de Endpoints
+
+Públicos (sin token)
+1) POST / (crear usuario desde auth-service)
+Body JSON (ejemplo mínimo útil):
+{
+  "authId": "<uuid_auth>",
+  "name": "Dr. Juan Pérez",
+  "email": "juan@example.com",
+  "role": "doctor",
+  "phone": "+59170123456",
+  "specialty": "Cardiología",
+  "licenseNumber": "MED-12345",
+  "consultationFee": 150
+}
+Respuestas:
+- 201: { ...perfilCompleto }
+- 409: { message: "El usuario ya existe" }
+- 400: { message: "Error creando usuario", error }
+
+2) GET /doctors
+Query params:
+- specialty (string), page (number, default 1), limit (number, default 10), sortBy (rating|name, default rating)
+Respuesta 200:
+{
+  "doctors": [ { id, name, specialty, yearsOfExperience, languages, clinicName, consultationFee, availability, bio, rating, reviewsCount, profilePicture } ],
+  "pagination": { total, page, limit, pages }
+}
+Errores: 500 con { message, error }
+
+3) GET /doctors/:id
+Respuesta 200: { id, name, specialty, yearsOfExperience, languages, clinicName, consultationFee, availability, bio, rating, reviewsCount, profilePicture }
+Errores: 404 { message: "Doctor no encontrado" } | 500 { message, error }
+
+Protegidos (requieren token)
+4) GET /me
+Headers: Authorization: Bearer <token>
+Respuesta 200: perfil completo del usuario autenticado (getFullProfile)
+Errores: 401 { message: "No autenticado" } | 404 { message: "Perfil no encontrado" } | 500 { message, error }
+
+5) PUT /me
+Headers: Authorization: Bearer <token>
+Body JSON: campos de perfil permitidos (no se aceptan authId, role, isVerified, rating, reviewsCount)
+Respuesta 200: perfil completo actualizado
+Errores: 401 { message: "No autenticado" } | 400 { message, error } | 404 { message: "Perfil no encontrado" }
+
+Solo Admin
+6) GET /
+Query: role, isActive, page, limit
+Respuesta 200: { users: [...], pagination: { total, page, limit, pages } }
+Errores: 500 { message, error }
+
+7) GET /stats
+Respuesta 200:
+{
+  "totalUsers": number,
+  "totalDoctors": number,
+  "totalPatients": number,
+  "activeUsers": number,
+  "verifiedUsers": number,
+  "specialtiesCount": number,
+  "specialties": string[]
+}
+Errores: 500 { message, error }
+
+Admin y Doctor
+8) GET /:id
+Respuesta 200: perfil completo
+Errores: 404 { message: "Usuario no encontrado" } | 500 { message, error }
+
+9) PUT /:id
+Body JSON: campos de perfil permitidos (se ignoran authId y role)
+Respuesta 200: perfil completo actualizado
+Errores: 400 { message, error } | 404 { message: "Usuario no encontrado" }
+
+10) DELETE /:id
+Respuesta 200: { message: "Usuario desactivado correctamente", user }
+Errores: 404 { message: "Usuario no encontrado" } | 500 { message, error }
+
+Modelo de datos (resumen de getFullProfile)
+{
+  id, authId, name, email, phone, role,
+  dateOfBirth, gender, bloodType, allergies, emergencyContact,
+  specialty, licenseNumber, yearsOfExperience, education, languages,
+  clinicName, consultationFee,
+  address: { street, city, state, country, zipCode },
+  availability: [ { day, start, end, isAvailable } ],
+  isActive, isVerified, profilePicture, bio, rating, reviewsCount,
+  createdAt, updatedAt, lastLogin
+}
+
+Paginación y cabeceras
+- El servicio devuelve objeto pagination en el body con total, page, limit y pages.
+- El gateway puede exponer X-Total-Count y X-Page-Count si se usan; por ahora, leer del body.
+
+Autenticación y roles
+- Token emitido por auth-service. El user-service valida con /api/auth/verify-token internamente.
+- Roles soportados: admin, doctor, patient.
+- Accesos:
+  - Admin: GET /, GET /stats, GET/PUT/DELETE /:id
+  - Doctor: GET/PUT /:id
+  - Cualquier rol autenticado: GET/PUT /me
+
+Buenas prácticas Frontend
+- Usar siempre gateway: baseURL http://localhost:3000/api/user
+- Incluir Authorization dinámicamente (si hay token).
+- Manejar 401 para redirigir a login; mostrar mensajes de 404/409/400 claros en UI.
+- Para listados, usar paginación (page/limit) y mostrar total/páginas.
+- Para búsqueda de doctores, usar specialty y sortBy según experiencia.
+
+Snippet cliente (axios)
+import axios from "axios";
+
+export const users = axios.create({
+  baseURL: import.meta.env.VITE_USER_BASE_URL || "http://localhost:3000/api/user",
+});
+
+export async function getDoctors(params) {
+  const { data } = await users.get("/doctors", { params });
+  return data; // { doctors, pagination }
+}
+
+export async function getDoctor(id) {
+  const { data } = await users.get(`/doctors/${id}`);
+  return data; // doctor public info
+}
+
+export async function getMe(token) {
+  const { data } = await users.get("/me", { headers: { Authorization: `Bearer ${token}` } });
+  return data; // full profile
+}
+
+export async function updateMe(token, payload) {
+  const { data } = await users.put("/me", payload, { headers: { Authorization: `Bearer ${token}` } });
+  return data; // updated profile
+}
+
+Notas
+- El auth-service ya intenta crear el perfil en user-service durante el registro.
+- Si consumes directo al servicio en dev, actualiza ALLOWED_ORIGINS y usa http://localhost:3002/users.
+- Evita actualizar campos sensibles en PUT (authId, role) desde frontend.
+- Para eliminar usuarios, se realiza soft delete (isActive=false).
