@@ -81,7 +81,14 @@ const notificationSchema = new mongoose.Schema({
 const Notification = mongoose.model('Notification', notificationSchema);
 
 // ✅ Middleware interno
+// Note: Allow unauthenticated access to the /health endpoint so health checks
+// from the API Gateway can succeed without providing auth headers.
 const authMiddleware = (req: any, res: any, next: any) => {
+  // Allow public health checks
+  if (req.path === '/health' || req.url?.startsWith('/health')) {
+    return next();
+  }
+
   const internalKey = req.headers['x-internal-key'];
   if (internalKey === ENV.INTERNAL_API_KEY) {
     req.user = { id: 'system', role: 'system' };
